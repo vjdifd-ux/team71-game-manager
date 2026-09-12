@@ -63,3 +63,49 @@ The D1 `game_state` table is created automatically by the Worker on first use.
 - Shared sync polls every second.
 - Live clock/stat writes are less frequent to reduce conflicts.
 - Conflict responses automatically pull the newest state and retry.
+
+
+## v11 stale active-game fix
+
+- Added an explicit **Clear Active Game** button.
+- Active-game discovery now self-cleans ended games.
+- Paused/abandoned games older than 30 minutes are automatically removed.
+- Any active marker older than 12 hours is automatically removed.
+- New Game / Reset also clears the active-game marker.
+- End Game clears the team-wide active-game marker instead of relying on the local game code.
+
+
+## v12 FINAL pre-game QA fixes
+
+- Fixed the biggest synchronization issue: the old service worker cached `/api/` responses, which could make both phones repeatedly see stale game, history, and active-game data.
+- API requests are now network-only and never stored in Cache Storage.
+- Page navigation is network-first, so new GitHub deployments appear on the first reload.
+- New Game / Clear Active / End Game now delete the old live game session so a stale phone cannot recreate it.
+- Only **Create Shared Game** can mark a session active; ordinary sync writes cannot resurrect a cleared game.
+- Timer now uses a wall-clock anchor and screen Wake Lock when supported.
+- If the phone/browser pauses, playing time advances only to the next required substitution or quarter boundary, then stops there instead of silently over-counting.
+- Accidental early **Next Quarter** jumps are blocked.
+- Quarter breaks cannot accidentally resume the previous quarter.
+- Added **Skip / Mark Complete** for the rare case where the scheduled six-minute rotation is intentionally skipped.
+- If only five players are available, the app no longer pauses unnecessarily at six minutes.
+- History uses a stable game ID so repeated End Game attempts cannot duplicate the same game.
+- Old local-only history is migrated into D1 instead of being overwritten by an empty cloud history.
+- Actual goalkeeper time is used for season goalkeeper-quarter totals.
+
+
+### Final QA patch
+- Deleting an individual history record no longer allows another phone's stale local cache to re-upload it.
+- Offline/failed history saves are tracked as pending and retried; normal cloud history is authoritative.
+- A phone automatically detaches when the shared live session has been ended/deleted.
+- Viewer permissions can no longer accidentally re-enable game controls.
+- Imported backups never resume an old running clock automatically.
+
+
+## v13 FINAL field/quarter UX
+
+- Player cumulative minutes now appear directly on the visual field next to each active player's position.
+- Quarter break now shows the entire next-quarter lineup before the clock starts.
+- The preview includes Goalkeeper, Forward, Left Back, Right Back, and Support/Mid.
+- The exact previewed lineup is the one applied when **Start Quarter With This Lineup** is pressed.
+- Selected bench state is cleared at the quarter transition to prevent an accidental immediate substitution.
+- Manual field substitutions are disabled for Viewer mode and after the game has ended.

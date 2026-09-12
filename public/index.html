@@ -89,7 +89,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v13 FINAL</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -117,7 +117,7 @@
           <strong>Active Team 71 Game</strong>
           <div class="muted small" style="margin-top:4px">If another coach already started a shared game, it will appear here automatically.</div>
         </div>
-        <button id="refreshActiveBtn">Refresh</button>
+        <div class="controls"><button id="refreshActiveBtn">Refresh</button><button id="clearActiveBtn" class="danger">Clear Active Game</button></div>
       </div>
       <div id="activeGameInfo" class="notice" style="margin-top:10px">Checking for an active game…</div>
       <div class="controls" style="margin-top:10px">
@@ -206,6 +206,7 @@
             <div class="controls" style="margin-top:8px">
               <button id="acceptSubBtn" class="good">Make 3-Player Sub</button>
               <button id="changeSubBtn">Change Suggestion</button>
+              <button id="skipSubBtn">Skip / Mark Complete</button>
             </div>
           </div>
         </div>
@@ -279,7 +280,7 @@
   <div class="modal-card">
     <h2 style="margin-top:0">Quarter Complete</h2>
     <div id="quarterTransition"></div>
-    <div class="controls" style="margin-top:14px"><button class="primary" id="startNextQuarterBtn">Start Next Quarter</button><button id="closeQuarterBtn">Not Yet</button></div>
+    <div class="controls" style="margin-top:14px"><button class="primary" id="startNextQuarterBtn">Start Quarter With This Lineup</button><button id="closeQuarterBtn">Not Yet</button></div>
   </div>
 </div>
 
@@ -289,6 +290,7 @@
   const slots=["GK","LB","RB","M","F"];
   const posNames={GK:"Goalie",LB:"Left Back",RB:"Right Back",M:"Support / Mid",F:"Forward"};
   const KEY="team71-v5-current", HIST="team71-v5-history";
+  const PENDING_HIST="team71-pending-history-v12", HIST_MIGRATED="team71-history-migrated-v12";
   const QLEN=720, GLEN=2880, SUBINT=360;
   let seasonHistory=loadJSON(HIST,[]);
   let state=fresh();
@@ -308,37 +310,63 @@
 
   function fresh(){
     return {
+      gameId:"g_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2),
       opponent:"Team 72",homeAway:"home",
       present:Object.fromEntries(roster.map(p=>[p,true])),
       availability:Object.fromEntries(roster.map(p=>[p,"available"])),
       gkPref:Object.fromEntries(roster.map(p=>[p,"yes"])),
       goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null},
-      selectedBench:null, elapsed:0, quarter:0, running:false, ended:false, planBuilt:false,
+      selectedBench:null, elapsed:0, quarter:0, running:false, ended:false,
+      awaitingQuarterTransition:false, planBuilt:false,
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,lastTick:null,
       shareCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
-      timerOwnerId:"", clockStartedAt:null, soundEnabled:true
+      timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, soundEnabled:true
     };
   }
   function $(id){return document.getElementById(id)}
   function loadJSON(k,d){try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}}
-  function save(){localStorage.setItem(KEY,JSON.stringify({...state,running:false,lastTick:null}))}
+  function save(){localStorage.setItem(KEY,JSON.stringify({...state,lastTick:null}))}
   function load(){
     const x=loadJSON(KEY,null);
     if(x){
-      state={...fresh(),...x,running:false,lastTick:null};
+      state={...fresh(),...x,lastTick:null};
       if(!Array.isArray(state.subDone)) state.subDone=[false,false,false,false];
       if(state.soundEnabled==null) state.soundEnabled=true;
+      if(!state.gameId) state.gameId="g_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2);
+      if(state.clockAnchorElapsed==null) state.clockAnchorElapsed=Number(state.elapsed||0);
+      if(state.awaitingQuarterTransition==null) state.awaitingQuarterTransition=false;
     }
   }
 
 
   function displayElapsed(){
-    if(state.running && state.clockStartedAt && state.timerOwnerId!==CLIENT_ID){
-      return Math.min(GLEN, state.elapsed + Math.max(0,(Date.now()-state.clockStartedAt)/1000));
+    if(state.running && state.clockStartedAt){
+      return Math.min(GLEN, Number(state.clockAnchorElapsed||0) + Math.max(0,(Date.now()-state.clockStartedAt)/1000));
     }
-    return state.elapsed;
+    return Number(state.elapsed||0);
+  }
+
+  let wakeLock=null;
+  async function requestWakeLock(){
+    try{
+      if("wakeLock" in navigator && !wakeLock){
+        wakeLock=await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release",()=>{wakeLock=null});
+      }
+    }catch(e){}
+  }
+  async function releaseWakeLock(){
+    try{ if(wakeLock){ await wakeLock.release(); wakeLock=null; } }catch(e){}
+  }
+
+  function currentQuarterBoundary(){
+    return (state.quarter+1)*QLEN;
+  }
+
+  function currentSubBoundary(){
+    return state.quarter*QLEN+SUBINT;
   }
 
   function unlockAudio(){
@@ -386,24 +414,35 @@
     return {type:"quarter",at:end,label:q===3?"Game end":"Quarter end / goalie change"};
   }
 
-  function resetGame(){
+  async function resetGame(){
     if(!guardEdit()) return;
     if(!confirm("Reset the current game to 0:00? Season history will be kept.")) return;
-    const keep={
-      shareCode:state.shareCode,
-      shareRole:state.shareRole,
-      gkPref:{...state.gkPref}
-    };
-    if(timerHandle){clearInterval(timerHandle);timerHandle=null}
+
+    const oldCode=state.shareCode;
+    const keepGkPref={...state.gkPref};
+
+    state.running=false;
+    state.clockStartedAt=null;
+    state.timerOwnerId="";
+    await releaseWakeLock();
+
+    if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+
+    try{
+      await fetch("/api/active",{method:"DELETE"});
+      if(oldCode) await fetch("/api/game/"+encodeURIComponent(oldCode),{method:"DELETE"});
+    }catch(e){}
+
     state=fresh();
-    state.shareCode=keep.shareCode;
-    state.shareRole=keep.shareRole;
-    state.gkPref=keep.gkPref;
+    state.gkPref=keepGkPref;
     undoStack=[];
     lastAlertKey="";
-    actionSave(["all"]);
+    activeGameCache=null;
+    save();
     renderAll();
+    await fetchActiveGame();
     showTab("setup");
+    setSyncStatus("","Local only");
     setStatus("New game ready.");
   }
 
@@ -440,9 +479,12 @@
 
     const g=activeGameCache;
     const elapsed=Number(g.elapsed||0);
+    const ageSec=Math.max(0,(Date.now()-Number(g.updated_at||Date.now()))/1000);
+    const stale=ageSec>300;
     info.innerHTML="<strong>Team 71 vs "+(g.opponent||"Opponent")+"</strong><br>"+
       "Q"+(Number(g.quarter||0)+1)+" • "+fmt(elapsed)+" • "+
-      "Team 71 "+Number(g.ourScore||0)+" – "+Number(g.theirScore||0)+" "+(g.opponent||"Opponent");
+      "Team 71 "+Number(g.ourScore||0)+" – "+Number(g.theirScore||0)+" "+(g.opponent||"Opponent")+
+      (stale ? "<br><span class='muted small'>This game looks stale ("+Math.floor(ageSec/60)+" min since update).</span>" : "");
     v.disabled=false;c.disabled=false;
   }
 
@@ -463,22 +505,112 @@
     setStatus(role==="viewer" ? "Joined active game as Viewer." : "Joined active game as Coach.");
   }
 
+
+  async function clearActiveGame(){
+    if(!confirm("Clear the active shared game for Team 71? This will not delete saved game history.")) return;
+    const code=activeGameCache?.code || state.shareCode;
+    try{
+      await fetch("/api/active",{method:"DELETE"});
+      if(code) await fetch("/api/game/"+encodeURIComponent(code),{method:"DELETE"});
+
+      state.shareCode="";
+      state.syncVersion=0;
+      state.running=false;
+      state.clockStartedAt=null;
+      state.timerOwnerId="";
+      state.awaitingQuarterTransition=false;
+      await releaseWakeLock();
+
+      if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+      save();
+
+      activeGameCache=null;
+      renderAll();
+      setSyncStatus("","Local only");
+      setStatus("Active shared game cleared.");
+    }catch(e){
+      alert("Could not clear the active shared game.");
+    }
+  }
+
+
+  function stableHistoryId(g){
+    if(g.id) return g.id;
+    const raw=[g.date||"",g.opponent||"",g.ourScore||0,g.theirScore||0].join("|");
+    let h=5381;
+    for(let i=0;i<raw.length;i++) h=((h<<5)+h)^raw.charCodeAt(i);
+    return "legacy_"+(h>>>0).toString(36);
+  }
+
+  function normalizeHistoryGames(list){
+    return (Array.isArray(list)?list:[]).map(g=>({...g,id:stableHistoryId(g)}));
+  }
+
+  function pendingHistoryIds(){
+    return new Set(loadJSON(PENDING_HIST,[]));
+  }
+
+  function savePendingHistory(set){
+    localStorage.setItem(PENDING_HIST,JSON.stringify([...set]));
+  }
+
   async function loadCloudHistory(){
+    const local=normalizeHistoryGames(loadJSON(HIST,seasonHistory));
+    const pending=pendingHistoryIds();
+
     try{
       const r=await fetch("/api/history",{cache:"no-store"});
       if(!r.ok) throw new Error("history fetch failed");
-      const remote=await r.json();
-      seasonHistory=Array.isArray(remote.games)?remote.games:[];
+      let remote=normalizeHistoryGames((await r.json()).games);
+
+      // One-time migration for game history created before D1 history existed.
+      if(remote.length===0 && local.length>0 && localStorage.getItem(HIST_MIGRATED)!=="1"){
+        local.forEach(g=>pending.add(g.id));
+        localStorage.setItem(HIST_MIGRATED,"1");
+        savePendingHistory(pending);
+      }
+
+      // Retry only records explicitly known to be unsynced. This prevents a
+      // deleted game on one phone from being resurrected by another phone's old cache.
+      const localById=new Map(local.map(g=>[g.id,g]));
+      for(const id of [...pending]){
+        const game=localById.get(id);
+        if(!game){
+          pending.delete(id);
+          continue;
+        }
+        try{
+          const pr=await fetch("/api/history",{
+            method:"POST",
+            headers:{"content-type":"application/json"},
+            body:JSON.stringify(game)
+          });
+          if(pr.ok) pending.delete(id);
+        }catch(e){}
+      }
+      savePendingHistory(pending);
+
+      // Re-read if we uploaded anything, then treat cloud as authoritative.
+      if(local.length && remote.length===0){
+        try{
+          const rr=await fetch("/api/history",{cache:"no-store"});
+          if(rr.ok) remote=normalizeHistoryGames((await rr.json()).games);
+        }catch(e){}
+      }
+
+      seasonHistory=remote.sort((a,b)=>Date.parse(a.date||0)-Date.parse(b.date||0));
       localStorage.setItem(HIST,JSON.stringify(seasonHistory));
       historyLoadedFromCloud=true;
       renderHistory();
     }catch(e){
-      // Keep the local cache if the network is unavailable.
+      // Offline: keep the local cache and any pending unsynced game.
+      seasonHistory=local;
       renderHistory();
     }
   }
 
   async function saveGameToCloud(game){
+    const pending=pendingHistoryIds();
     try{
       const r=await fetch("/api/history",{
         method:"POST",
@@ -486,34 +618,54 @@
         body:JSON.stringify(game)
       });
       if(!r.ok) throw new Error("history save failed");
+      pending.delete(game.id);
+      savePendingHistory(pending);
       await loadCloudHistory();
       return true;
     }catch(e){
+      pending.add(game.id);
+      savePendingHistory(pending);
       return false;
     }
   }
 
   async function deleteHistoryGame(id){
+    if(!guardEdit()) return;
     if(!confirm("Delete this game from season history?")) return;
+
+    // Remove it from this device first so a subsequent cloud refresh cannot
+    // treat this phone's old copy as pending history.
+    seasonHistory=normalizeHistoryGames(seasonHistory).filter(g=>g.id!==id);
+    localStorage.setItem(HIST,JSON.stringify(seasonHistory));
+    const pending=pendingHistoryIds();
+    pending.delete(id);
+    savePendingHistory(pending);
+    renderHistory();
+
     try{
       const r=await fetch("/api/history/"+encodeURIComponent(id),{method:"DELETE"});
       if(!r.ok) throw new Error("delete failed");
       await loadCloudHistory();
     }catch(e){
-      alert("Could not delete that game from cloud history.");
+      alert("Game removed locally, but the cloud delete could not be confirmed. Try again when online.");
     }
   }
 
   async function deleteAllHistory(){
+    if(!guardEdit()) return;
     if(!confirm("Delete ALL saved Team 71 game history? This cannot be undone.")) return;
+
+    seasonHistory=[];
+    localStorage.setItem(HIST,"[]");
+    localStorage.setItem(PENDING_HIST,"[]");
+    localStorage.setItem(HIST_MIGRATED,"1");
+    renderHistory();
+
     try{
       const r=await fetch("/api/history",{method:"DELETE"});
       if(!r.ok) throw new Error("delete all failed");
-      seasonHistory=[];
-      localStorage.setItem(HIST,"[]");
-      renderHistory();
     }catch(e){
-      alert("Could not delete season history.");
+      alert("History cleared on this device, but the cloud delete could not be confirmed. Try again when online.");
     }
   }
 
@@ -536,17 +688,14 @@
     return copy;
   }
 
-  async function cloudPush(domains=["all"]){
+  async function cloudPush(domains=["all"],activate=false){
     if(applyingRemote || !state.shareCode || state.shareRole==="viewer") return;
     try{
-      if(domains.includes("clock") && state.running && state.timerOwnerId===CLIENT_ID){
-        state.clockStartedAt=Date.now();
-      }
       const payload=cloudPayload();
       const r=await fetch("/api/game/"+encodeURIComponent(state.shareCode),{
         method:"PUT",
         headers:{"content-type":"application/json"},
-        body:JSON.stringify({state:payload,changedDomains:domains,clientId:CLIENT_ID})
+        body:JSON.stringify({state:payload,changedDomains:domains,clientId:CLIENT_ID,activate})
       });
       if(r.status===409){
         await cloudPull();
@@ -557,7 +706,7 @@
       const data=await r.json();
       state.syncVersion=data.syncVersion||state.syncVersion;
       state.lastCloudUpdate=Date.now();
-      localStorage.setItem(KEY,JSON.stringify({...state,running:false,lastTick:null}));
+      localStorage.setItem(KEY,JSON.stringify({...state,lastTick:null}));
       setSyncStatus("live","Shared • synced");
     }catch(e){
       setSyncStatus("err","Shared • sync error");
@@ -568,7 +717,19 @@
     if(!state.shareCode) return;
     try{
       const r=await fetch("/api/game/"+encodeURIComponent(state.shareCode),{cache:"no-store"});
-      if(r.status===404){ setSyncStatus("err","Game code not found"); return; }
+      if(r.status===404){
+        state.shareCode="";
+        state.syncVersion=0;
+        state.running=false;
+        state.clockStartedAt=null;
+        state.timerOwnerId="";
+        state.awaitingQuarterTransition=false;
+        if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+        save();
+        setSyncStatus("","Shared game ended");
+        renderAll();
+        return;
+      }
       if(!r.ok) throw new Error("pull failed");
       const remote=await r.json();
       if((remote.syncVersion||0) > (state.syncVersion||0)){
@@ -579,6 +740,8 @@
           elapsed:state.elapsed, play:state.play, gk:state.gk,
           running:state.running, quarter:state.quarter,
           timerOwnerId:state.timerOwnerId, clockStartedAt:state.clockStartedAt,
+          clockAnchorElapsed:state.clockAnchorElapsed,
+          awaitingQuarterTransition:state.awaitingQuarterTransition,
           lastTick:state.lastTick
         } : null;
         state={...fresh(),...remote,...localShare,lastTick:null};
@@ -587,7 +750,7 @@
         }else if(state.running){
           state.lastTick=Date.now();
         }
-        localStorage.setItem(KEY,JSON.stringify({...state,running:false,lastTick:null}));
+        localStorage.setItem(KEY,JSON.stringify({...state,lastTick:null}));
         renderAll();
         applyingRemote=false;
       }
@@ -609,7 +772,7 @@
     state.shareCode=randomGameCode();
     state.syncVersion=0;
     save();
-    await cloudPush(["all"]);
+    await cloudPush(["all"],true);
     await fetchActiveGame();
     await loadCloudHistory();
     startCloudPolling();
@@ -746,12 +909,15 @@
     $("gameLabel").textContent="Team 71 vs "+state.opponent;
     $("oppName").textContent=state.opponent;$("ourScore").textContent=state.ourScore;$("theirScore").textContent=state.theirScore;$("quickUs").textContent=state.ourScore;$("quickThem").textContent=state.theirScore;
     $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+" of 4</strong>";
-    $("timer").textContent=fmt(displayElapsed());$("startPauseBtn").textContent=state.running?"Pause":(state.elapsed?"Resume":"Start");
+    $("timer").textContent=fmt(displayElapsed());
+    $("startPauseBtn").textContent=state.awaitingQuarterTransition ? "Start Next Quarter" : (state.running?"Pause":(state.elapsed?"Resume":"Start"));
+    $("startPauseBtn").disabled = state.ended || (!canEdit());
+    $("nextQuarterBtn").disabled = state.ended || (!canEdit());
     const jersey=state.homeAway==="home"?"home":"away";
     const positions={F:"posF",LB:"posLB",RB:"posRB",M:"posM",GK:"posGK"};
     Object.entries(positions).forEach(([slot,id])=>{
-      const p=state.lineup[slot],el=$(id);el.innerHTML='<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+'</div>';
-      el.onclick=()=>{if(slot==="GK"){return}if(state.selectedBench)makeManualSub(state.selectedBench,slot)};
+      const p=state.lineup[slot],el=$(id);el.innerHTML='<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+(p?' • '+minfmt(state.play[p])+' min':'')+'</div>';
+      el.onclick=()=>{if(!canEdit()||state.ended||slot==="GK"){return}if(state.selectedBench)makeManualSub(state.selectedBench,slot)};
     });
     renderBench();renderStatusPlayers();renderMinutes();renderGoals();renderSubSuggestion();
   }
@@ -787,14 +953,26 @@
   }
 
   function setAvailability(p,v){
-    pushUndo("player status");state.availability[p]=v;
+    pushUndo("player status");
+    state.availability[p]=v;
+    state.suggestedSub=null;
+
     if(v!=="available"){
+      state.goaliePlan=state.goaliePlan.map((g,i)=>
+        g===p && i>=state.quarter ? pickReplacementGoalie(i,p) : g
+      );
+
       const slot=slots.find(s=>state.lineup[s]===p);
-      if(slot){state.lineup[slot]=null;autoReplaceEmpty(slot)}
+      if(slot){
+        state.lineup[slot]=null;
+        autoReplaceEmpty(slot);
+      }
       if(state.selectedBench===p)state.selectedBench=null;
-      state.goaliePlan=state.goaliePlan.map((g,i)=>g===p&&i>=state.quarter?pickReplacementGoalie(i,p):g);
     }
-    actionSave(["setup","lineup"]);renderAll();setStatus(p+" marked "+v+".");
+
+    actionSave(["setup","lineup"]);
+    renderAll();
+    setStatus(p+" marked "+v+".");
   }
 
   function pickReplacementGoalie(q,exclude){
@@ -882,18 +1060,37 @@
     const desc=s.incoming.map((p,i)=>p+" for "+s.outgoingPlayers[i]).join(", ");
     state.subDone[state.quarter]=true;
     state.suggestedSub=null;
+    state.clockAnchorElapsed=state.elapsed;
     state.nextSubAt=(state.quarter+1)*QLEN+SUBINT;
     actionSave(["lineup"]);
     renderAll();
     setStatus("Rotation completed: "+desc+".");
   }
 
+
+  function skipScheduledSub(){
+    if(!guardEdit()) return;
+    if(state.subDone[state.quarter]){
+      setStatus("The scheduled rotation is already complete.");
+      return;
+    }
+    if(!confirm("Mark this 6-minute rotation complete without making the suggested group sub?")) return;
+
+    pushUndo("skip scheduled rotation");
+    state.subDone[state.quarter]=true;
+    state.suggestedSub=null;
+    state.nextSubAt=currentQuarterBoundary();
+    actionSave(["lineup"]);
+    renderAll();
+    setStatus("Scheduled rotation marked complete. You can resume the clock.");
+  }
+
   function renderGoals(){
     const box=$("goalScorers");box.innerHTML="";
     onField().forEach(p=>{const b=document.createElement("button");b.textContent="⚽ "+short(p)+" ("+(state.goals[p]||0)+")";b.disabled=!canEdit();b.onclick=()=>teamGoal(p);box.append(b)});
   }
-  function teamGoal(p){if(!guardEdit())return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(state.elapsed)});actionSave(["score"]);renderAll();setStatus("Goal: "+p)}
-  function oppGoal(){if(!guardEdit())return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(state.elapsed)});actionSave(["score"]);renderAll();setStatus("Opponent goal recorded.")}
+  function teamGoal(p){if(!guardEdit())return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);renderAll();setStatus("Goal: "+p)}
+  function oppGoal(){if(!guardEdit())return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);renderAll();setStatus("Opponent goal recorded.")}
   function undoLastGoal(){
     const i=[...state.goalLog].map((_,i)=>i).pop();if(i==null){setStatus("No goal to undo.");return}
     pushUndo("undo last goal");const g=state.goalLog.pop();if(g.type==="team"){state.ourScore=Math.max(0,state.ourScore-1);state.goals[g.player]=Math.max(0,state.goals[g.player]-1)}else state.theirScore=Math.max(0,state.theirScore-1);actionSave(["score"]);renderAll()
@@ -907,22 +1104,78 @@
   function startPause(){
     if(!guardEdit())return;
     if(state.ended)return;
-    if(onField().length!==5){setStatus("Need 5 active players on the field.");return}
+
+    if(state.awaitingQuarterTransition){
+      showQuarterTransition();
+      return;
+    }
+
+    if(onField().length!==5){
+      setStatus("Need 5 active players on the field before starting.");
+      return;
+    }
+
+    // At/after the scheduled mid-quarter break, require the coach to finish
+    // or explicitly skip the rotation before resuming.
+    if(!state.running && !state.subDone[state.quarter] && state.elapsed>=currentSubBoundary() && state.elapsed<currentQuarterBoundary()){
+      setStatus("Complete the scheduled rotation, or tap Skip / Mark Complete before resuming.");
+      return;
+    }
+
     unlockAudio();
+
     if(!state.running){
       state.running=true;
       state.timerOwnerId=CLIENT_ID;
-      state.lastTick=Date.now();
+      state.clockAnchorElapsed=Number(state.elapsed||0);
       state.clockStartedAt=Date.now();
+      state.lastTick=Date.now();
+      requestWakeLock();
       if(!timerHandle)timerHandle=setInterval(tick,250);
       setStatus("Game clock running.");
     }else{
+      // Bring official elapsed/stats exactly up to now before pausing.
+      advanceClockToNow();
       state.running=false;
       state.clockStartedAt=null;
+      state.clockAnchorElapsed=state.elapsed;
+      releaseWakeLock();
       setStatus("Game clock paused.");
     }
-    actionSave(["clock"]);
+
+    actionSave(["clock","stats"]);
     renderGame();
+  }
+
+  function advanceClockToNow(){
+    if(!state.running || state.timerOwnerId!==CLIENT_ID || !state.clockStartedAt) return {hit:null};
+
+    const target=Math.min(
+      GLEN,
+      Number(state.clockAnchorElapsed||0)+Math.max(0,(Date.now()-state.clockStartedAt)/1000)
+    );
+
+    let boundary=currentQuarterBoundary();
+    let boundaryType="quarter";
+
+    if(!state.subDone[state.quarter] && bench().length>0){
+      const subAt=currentSubBoundary();
+      if(state.elapsed < subAt && subAt < boundary){
+        boundary=subAt;
+        boundaryType="sub";
+      }
+    }
+
+    const capped=Math.min(target,boundary);
+    const d=Math.max(0,capped-state.elapsed);
+
+    if(d>0){
+      onField().forEach(p=>state.play[p]+=d);
+      if(state.lineup.GK)state.gk[state.lineup.GK]+=d;
+      state.elapsed=capped;
+    }
+
+    return {hit: target>=boundary ? boundaryType : null};
   }
 
   function tick(){
@@ -931,60 +1184,67 @@
       return;
     }
 
-    // Only the phone that owns the clock accumulates official player time.
+    // Only the phone that owns the clock accumulates official playing time.
     if(state.timerOwnerId!==CLIENT_ID){
       renderGame();
       return;
     }
 
-    const now=Date.now();
-    const d=Math.min(1,(now-state.lastTick)/1000);
-    state.lastTick=now;
     const previous=state.elapsed;
-
-    onField().forEach(p=>state.play[p]+=d);
-    if(state.lineup.GK)state.gk[state.lineup.GK]+=d;
-    state.elapsed=Math.min(GLEN,state.elapsed+d);
-
+    const result=advanceClockToNow();
     const q=state.quarter;
     const qStart=q*QLEN;
     const warnSub=qStart+SUBINT-30;
     const subAt=qStart+SUBINT;
     const warnEnd=qStart+QLEN-30;
     const qEnd=qStart+QLEN;
-
     const crossed=(t)=>previous<t && state.elapsed>=t;
 
-    if(!state.subDone[q] && crossed(warnSub)){
+    if(!state.subDone[q] && bench().length>0 && crossed(warnSub)){
       playWarning();
       setStatus("30 seconds until the 3-player rotation.");
     }
-    if(!state.subDone[q] && crossed(subAt)){
-      playSubAlert();
+
+    if(result.hit==="sub"){
       state.running=false;
       state.clockStartedAt=null;
+      state.clockAnchorElapsed=state.elapsed;
       suggestSub(true);
-      setStatus("6-minute rotation: swap the 3 bench players in, then resume.");
+      playSubAlert();
+      releaseWakeLock();
+      setStatus("6-minute rotation: swap the bench players in, then resume.");
       actionSave(["clock","stats","lineup"]);
       renderAll();
       return;
     }
+
+    // With no bench, do not stop at six minutes.
+    if(!state.subDone[q] && bench().length===0 && state.elapsed>=subAt){
+      state.subDone[q]=true;
+      state.nextSubAt=qEnd;
+    }
+
     if(crossed(warnEnd)){
       playWarning();
       setStatus("30 seconds left in the quarter.");
     }
-    if(crossed(qEnd)){
+
+    if(result.hit==="quarter"){
       state.elapsed=qEnd;
       state.running=false;
       state.clockStartedAt=null;
+      state.clockAnchorElapsed=state.elapsed;
+      releaseWakeLock();
       playPeriodBuzzer();
 
       if(q<3){
+        state.awaitingQuarterTransition=true;
         showQuarterTransition();
         actionSave(["clock","stats"]);
         renderAll();
         return;
       }else{
+        state.awaitingQuarterTransition=false;
         setStatus("Final buzzer — game complete. Tap End Game to save it.");
         actionSave(["clock","stats"]);
         renderAll();
@@ -993,6 +1253,7 @@
     }
 
     save();
+    const now=Date.now();
     if(now-lastClockCloudPush>4000){
       lastClockCloudPush=now;
       cloudPush(["clock","stats"]);
@@ -1000,24 +1261,81 @@
     renderGame();
   }
 
+  function previewNextQuarterLineup(){
+    const nq=Math.min(3,state.quarter+1);
+    const pool=activePool();
+
+    let g=state.goaliePlan[nq] && pool.includes(state.goaliePlan[nq])
+      ? state.goaliePlan[nq]
+      : null;
+
+    if(!g){
+      g=pool
+        .filter(p=>state.gkPref[p]!=="no")
+        .sort((a,b)=>state.gk[a]-state.gk[b])[0] || null;
+    }
+
+    const ranked=pool
+      .filter(p=>p!==g)
+      .sort((a,b)=>state.play[a]-state.play[b])
+      .slice(0,4);
+
+    return {
+      GK:g,
+      LB:ranked[0]||null,
+      RB:ranked[1]||null,
+      M:ranked[2]||null,
+      F:ranked[3]||null
+    };
+  }
+
   function showQuarterTransition(){
-    const nq=state.quarter+1,nextGK=state.goaliePlan[nq]||"Not assigned";
-    $("quarterTransition").innerHTML="<p><strong>Next goalie:</strong> "+nextGK+"</p><p class='muted small'>Goalkeepers rotate every quarter. Starting the next quarter will move the planned goalie into goal and rebuild the four field spots to keep minutes balanced.</p>";
+    const nextQ=Math.min(3,state.quarter+1);
+    const preview=previewNextQuarterLineup();
+
+    $("quarterTransition").innerHTML=
+      "<p><strong>Quarter "+(nextQ+1)+" lineup</strong></p>"+
+      "<div class='grid2' style='margin-top:8px'>"+
+        "<div class='slot'><b>Goalie</b><div>"+(preview.GK||"—")+"</div></div>"+
+        "<div class='slot'><b>Forward</b><div>"+(preview.F||"—")+"</div></div>"+
+        "<div class='slot'><b>Left Back</b><div>"+(preview.LB||"—")+"</div></div>"+
+        "<div class='slot'><b>Right Back</b><div>"+(preview.RB||"—")+"</div></div>"+
+        "<div class='slot'><b>Support / Mid</b><div>"+(preview.M||"—")+"</div></div>"+
+      "</div>"+
+      "<p class='muted small' style='margin-top:10px'>Position the girls now. This exact lineup will be applied when you start the next quarter.</p>";
+
     $("quarterModal").classList.add("show");
   }
   function startNextQuarter(){
     if(!guardEdit())return;
+    if(state.quarter>=3)return;
+
     pushUndo("quarter transition");
     state.quarter=Math.min(3,state.quarter+1);
+    state.awaitingQuarterTransition=false;
     state.nextSubAt=state.quarter*QLEN+SUBINT;
     state.subDone[state.quarter]=false;
-    applyQuarterGoalie();
-    balanceLineup();
+    state.suggestedSub=null;
+    state.selectedBench=null;
+
+    const preview=previewNextQuarterLineup();
+    state.lineup={
+      GK:preview.GK,
+      LB:preview.LB,
+      RB:preview.RB,
+      M:preview.M,
+      F:preview.F
+    };
+
     $("quarterModal").classList.remove("show");
+
     state.running=true;
     state.timerOwnerId=CLIENT_ID;
-    state.lastTick=Date.now();
+    state.clockAnchorElapsed=state.elapsed;
     state.clockStartedAt=Date.now();
+    state.lastTick=Date.now();
+    requestWakeLock();
+
     if(!timerHandle)timerHandle=setInterval(tick,250);
     actionSave(["clock","lineup","stats"]);
     renderAll();
@@ -1032,15 +1350,17 @@
     const g=state.lineup.GK,pool=activePool().filter(p=>p!==g).sort((a,b)=>state.play[a]-state.play[b]).slice(0,4);
     ["LB","RB","M","F"].forEach((s,i)=>state.lineup[s]=pool[i]||null);state.suggestedSub=null;
   }
-  function nextQuarter(){if(!guardEdit())return;
+  function nextQuarter(){
+    if(!guardEdit())return;
     if(state.quarter>=3)return;
-    state.running=false;
-    state.clockStartedAt=null;
-    state.elapsed=(state.quarter+1)*QLEN;
-    playPeriodBuzzer();
-    showQuarterTransition();
-    actionSave(["clock","stats"]);
-    renderAll();
+
+    if(state.awaitingQuarterTransition || state.elapsed>=currentQuarterBoundary()-0.5){
+      state.awaitingQuarterTransition=true;
+      showQuarterTransition();
+      return;
+    }
+
+    alert("The app changes quarters automatically at 12:00. The Next Quarter button becomes available at the period break.");
   }
 
   async function endGame(){
@@ -1048,15 +1368,20 @@
     if(state.ended)return;
     if(!confirm("End this game and save it to season history?"))return;
 
+    if(state.running && state.timerOwnerId===CLIENT_ID) advanceClockToNow();
     state.running=false;
     state.clockStartedAt=null;
+    state.clockAnchorElapsed=state.elapsed;
+    state.awaitingQuarterTransition=false;
     state.ended=true;
+    await releaseWakeLock();
 
-    const gkQuarters=Object.fromEntries(roster.map(p=>[p,0]));
-    state.goaliePlan.forEach(g=>{if(g)gkQuarters[g]++});
+    const gkQuarters=Object.fromEntries(
+      roster.map(p=>[p, Number(state.gk[p]||0)/QLEN])
+    );
 
     const game={
-      id:(crypto.randomUUID ? crypto.randomUUID() : ("g_"+Date.now()+"_"+Math.random().toString(36).slice(2))),
+      id:state.gameId,
       date:new Date().toISOString(),
       opponent:state.opponent,
       homeAway:state.homeAway,
@@ -1068,7 +1393,8 @@
       goalLog:JSON.parse(JSON.stringify(state.goalLog))
     };
 
-    // Save locally immediately so a network issue never loses the game.
+    // Upsert locally so repeated End attempts can never duplicate a game.
+    seasonHistory=normalizeHistoryGames(seasonHistory).filter(g=>g.id!==game.id);
     seasonHistory.push(game);
     localStorage.setItem(HIST,JSON.stringify(seasonHistory));
 
@@ -1078,14 +1404,19 @@
 
     const cloudSaved=await saveGameToCloud(game);
 
-    // Mark the shared game no longer active after history has been saved.
     try{
-      if(state.shareCode){
-        await fetch("/api/active/"+encodeURIComponent(state.shareCode),{method:"DELETE"});
-      }
+      await fetch("/api/active",{method:"DELETE"});
+      if(state.shareCode) await fetch("/api/game/"+encodeURIComponent(state.shareCode),{method:"DELETE"});
     }catch(e){}
 
-    setStatus(cloudSaved ? "Game saved to shared season history." : "Game saved locally; cloud history will need to sync later.");
+    state.shareCode="";
+    state.syncVersion=0;
+    if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+    save();
+
+    setStatus(cloudSaved ? "Game saved to shared season history." : "Game saved locally; cloud history will sync when online.");
+    activeGameCache=null;
+    renderAll();
     await fetchActiveGame();
     showTab("history");
   }
@@ -1097,9 +1428,27 @@
     if(state.shareCode) setSyncStatus("live",state.shareRole==="viewer"?"Shared • viewing live":"Shared • connected");
     else setSyncStatus("","Local only");
 
-    // Viewer mode should not expose action buttons.
-    const ids=["buildPlanBtn","startPauseBtn","nextQuarterBtn","endGameBtn","newGameBtn","undoBtn","acceptSubBtn","changeSubBtn","oppGoalBtn","undoGoalBtn","allAvailableBtn","historyNewGameBtn"];
-    ids.forEach(id=>{const el=$(id);if(el)el.disabled=!canEdit()});
+    const viewer=!canEdit();
+
+    // Controls whose only restriction is Coach vs Viewer.
+    ["buildPlanBtn","newGameBtn","undoBtn","allAvailableBtn","historyNewGameBtn",
+     "deleteAllHistoryBtn","clearActiveBtn"].forEach(id=>{
+      const el=$(id); if(el) el.disabled=viewer;
+    });
+
+    // Game controls also have state-dependent restrictions.
+    if($("startPauseBtn")) $("startPauseBtn").disabled=viewer || state.ended;
+    if($("nextQuarterBtn")) $("nextQuarterBtn").disabled=viewer || state.ended;
+    if($("endGameBtn")) $("endGameBtn").disabled=viewer || state.ended;
+    if($("oppGoalBtn")) $("oppGoalBtn").disabled=viewer || state.ended;
+    if($("undoGoalBtn")) $("undoGoalBtn").disabled=viewer || state.ended;
+
+    // Suggested-sub buttons are enabled by renderSubSuggestion only when useful.
+    if(viewer){
+      ["acceptSubBtn","changeSubBtn","skipSubBtn"].forEach(id=>{
+        const el=$(id); if(el) el.disabled=true;
+      });
+    }
   }
 
   function renderHistory(){
@@ -1118,6 +1467,7 @@
       del.style.minHeight="34px";
       del.style.padding="5px 8px";
       del.textContent="Delete";
+      del.disabled=!canEdit();
       del.onclick=()=>deleteHistoryGame(g.id);
       const row=document.createElement("div");
       row.className="row";
@@ -1130,7 +1480,7 @@
     tb.innerHTML="";
     roster.forEach(p=>{
       const tr=document.createElement("tr");
-      tr.innerHTML="<td>"+p+"</td><td>"+s[p].minutes.toFixed(1).replace(".0","")+"</td><td>"+s[p].gkQ+"</td><td>"+s[p].goals+"</td>";
+      tr.innerHTML="<td>"+p+"</td><td>"+s[p].minutes.toFixed(1).replace(".0","")+"</td><td>"+s[p].gkQ.toFixed(1).replace(".0","")+"</td><td>"+s[p].goals+"</td>";
       tb.append(tr)
     });
   }
@@ -1139,18 +1489,19 @@
     const blob=new Blob([JSON.stringify({version:5,history:seasonHistory,current:state},null,2)],{type:"application/json"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="team71-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)
   }
-  $("importFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(Array.isArray(j.history))seasonHistory=j.history;if(j.current)state={...fresh(),...j.current,running:false,lastTick:null};localStorage.setItem(HIST,JSON.stringify(seasonHistory));actionSave(["all"]);renderAll();alert("Backup restored.")}catch(err){alert("That backup file could not be read.")}};r.readAsText(f)});
+  $("importFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(Array.isArray(j.history))seasonHistory=j.history;if(j.current)state={...fresh(),...j.current,running:false,clockStartedAt:null,timerOwnerId:"",lastTick:null};localStorage.setItem(HIST,JSON.stringify(seasonHistory));actionSave(["all"]);renderAll();alert("Backup restored.")}catch(err){alert("That backup file could not be read.")}};r.readAsText(f)});
 
   $("opponent").addEventListener("input",()=>{state.opponent=$("opponent").value;actionSave(["setup"])});$("homeAway").addEventListener("change",()=>{state.homeAway=$("homeAway").value;actionSave(["setup"])});
   $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});actionSave(["setup","lineup"]);renderAll()};
   $("buildPlanBtn").onclick=buildPlan;$("startPauseBtn").onclick=startPause;$("nextQuarterBtn").onclick=nextQuarter;$("endGameBtn").onclick=endGame;$("undoBtn").onclick=undo;
-  $("acceptSubBtn").onclick=acceptSuggestedSub;$("changeSubBtn").onclick=()=>{state.suggestedSub=null;suggestSub(true);actionSave(["lineup"]);renderSubSuggestion()};
+  $("acceptSubBtn").onclick=acceptSuggestedSub;$("changeSubBtn").onclick=()=>{state.suggestedSub=null;suggestSub(true);actionSave(["lineup"]);renderSubSuggestion()};$("skipSubBtn").onclick=skipScheduledSub;
   $("oppGoalBtn").onclick=oppGoal;$("undoGoalBtn").onclick=undoLastGoal;$("startNextQuarterBtn").onclick=startNextQuarter;$("closeQuarterBtn").onclick=()=>$("quarterModal").classList.remove("show");
   $("exportBtn").onclick=exportBackup;
   $("newGameBtn").onclick=resetGame;
   $("historyNewGameBtn").onclick=resetGame;
   $("deleteAllHistoryBtn").onclick=deleteAllHistory;
   $("refreshActiveBtn").onclick=fetchActiveGame;
+  $("clearActiveBtn").onclick=clearActiveGame;
   $("joinActiveViewerBtn").onclick=()=>joinActiveGame("viewer");
   $("joinActiveCoachBtn").onclick=()=>joinActiveGame("coach");
   $("soundToggle").onchange=e=>{state.soundEnabled=!!e.target.checked;unlockAudio();save()};
@@ -1161,7 +1512,16 @@
 
 
   function renderAll(){renderSetup();renderGoaliePlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
-  load();renderAll();fetchActiveGame();loadCloudHistory();startCloudPolling();
+  load();
+  if(state.running && state.timerOwnerId===CLIENT_ID){
+    state.lastTick=Date.now();
+    requestWakeLock();
+    if(!timerHandle)timerHandle=setInterval(tick,250);
+  }
+  renderAll();
+  fetchActiveGame();
+  loadCloudHistory();
+  startCloudPolling();
   setInterval(()=>{ if(state.running && state.timerOwnerId!==CLIENT_ID) renderGame(); },250);
 
   if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}

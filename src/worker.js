@@ -17,21 +17,50 @@ export default {
       if (!row) return json({error:"No active game"},404);
 
       const s=JSON.parse(row.state);
+      const ageMs=Math.max(0,Date.now()-Number(row.updated_at||0));
+
+      // Self-heal abandoned/finished active rows:
+      // - ended games are never active
+      // - an inactive/stopped game untouched for > 30 minutes is considered abandoned
+      // - any row older than 12 hours is always stale
+      const abandoned =
+        s.ended === true ||
+        ((s.running) && ageMs > 15*60*1000) ||
+        ((!s.running) && ageMs > 30*60*1000) ||
+        ageMs > 12*60*60*1000;
+
+      if(abandoned){
+        await env.DB.prepare(
+          "DELETE FROM active_game WHERE team='team71' AND code=?"
+        ).bind(row.code).run();
+        return json({error:"No active game"},404);
+      }
+
       return json({
         code:row.code,
         opponent:s.opponent,
         quarter:s.quarter,
         elapsed:effectiveElapsed(s),
         running:s.running,
+        ended:s.ended,
         ourScore:s.ourScore,
         theirScore:s.theirScore,
         updated_at:row.updated_at
       },200,{"cache-control":"no-store"});
     }
 
+    if (url.pathname === "/api/active" && request.method === "DELETE") {
+      await env.DB.prepare(
+        "DELETE FROM active_game WHERE team='team71'"
+      ).run();
+      return json({ok:true});
+    }
+
     if (url.pathname.startsWith("/api/active/") && request.method === "DELETE") {
       const code=url.pathname.split("/").pop().toUpperCase();
-      await env.DB.prepare("DELETE FROM active_game WHERE team='team71' AND code=?").bind(code).run();
+      await env.DB.prepare(
+        "DELETE FROM active_game WHERE team='team71' AND code=?"
+      ).bind(code).run();
       return json({ok:true});
     }
 
@@ -83,6 +112,12 @@ export default {
         return json({error:"Invalid game code"},400);
       }
 
+      if (request.method === "DELETE") {
+        await env.DB.prepare("DELETE FROM active_game WHERE team='team71' AND code=?").bind(code).run();
+        await env.DB.prepare("DELETE FROM game_state WHERE code=?").bind(code).run();
+        return json({ok:true});
+      }
+
       if (request.method === "GET") {
         const db = typeof env.DB.withSession === "function"
           ? env.DB.withSession("first-primary")
@@ -110,6 +145,7 @@ export default {
         const changed = Array.isArray(body?.changedDomains)
           ? body.changedDomains
           : ["all"];
+        const activate = body?.activate === true;
 
         const raw = JSON.stringify(incoming);
         if (raw.length > 120000) return json({error:"State too large"},413);
@@ -137,7 +173,7 @@ export default {
             `).bind(code,JSON.stringify(initial),1,now).run();
 
             if(Number(ins?.meta?.changes||0)===1){
-              await setActiveGame(env,code);
+              if(activate && !initial.ended) await setActiveGame(env,code);
               return json({ok:true,syncVersion:1});
             }
             continue;
@@ -169,7 +205,7 @@ export default {
               copyFields(["goals","ourScore","theirScore","goalLog"]);
             }
             if(changed.includes("clock")){
-              copyFields(["elapsed","quarter","running","ended","timerOwnerId","clockStartedAt"]);
+              copyFields(["elapsed","quarter","running","ended","timerOwnerId","clockStartedAt","clockAnchorElapsed","awaitingQuarterTransition"]);
             }
             if(changed.includes("stats")){
               copyFields(["play","gk"]);
@@ -190,7 +226,7 @@ export default {
           `).bind(JSON.stringify(merged),nextVersion,now,code,oldVersion).run();
 
           if(Number(upd?.meta?.changes||0)===1){
-            if(!merged.ended) await setActiveGame(env,code);
+            if(activate && !merged.ended) await setActiveGame(env,code);
             return json({ok:true,syncVersion:nextVersion});
           }
         }
@@ -240,7 +276,11 @@ async function setActiveGame(env,code){
 
 function effectiveElapsed(s){
   if(s?.running && s?.clockStartedAt){
-    return Math.min(2880,Number(s.elapsed||0)+Math.max(0,(Date.now()-Number(s.clockStartedAt))/1000));
+    return Math.min(
+      2880,
+      Number(s.clockAnchorElapsed ?? s.elapsed ?? 0) +
+      Math.max(0,(Date.now()-Number(s.clockStartedAt))/1000)
+    );
   }
   return Number(s?.elapsed||0);
 }
