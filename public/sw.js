@@ -1,4 +1,4 @@
-const CACHE='team71-v21-test-clock';
+const CACHE='team71-v22-stable';
 const STATIC=['./manifest.json','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{

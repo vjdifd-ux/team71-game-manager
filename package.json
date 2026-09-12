@@ -1,12 +1,17 @@
 {
   "name": "team71-game-manager",
   "private": true,
-  "version": "8.1.0",
+  "version": "22.0.0",
+  "type": "module",
+  "description": "Team 71 Game Manager — Cloudflare Worker + D1 + static PWA",
   "scripts": {
+    "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "tail": "wrangler tail",
+    "test": "node --test --test-concurrency=1 test/worker.test.mjs test/app.test.mjs"
   },
   "devDependencies": {
+    "jsdom": "^26.0.0",
     "wrangler": "^4.0.0"
   }
 }

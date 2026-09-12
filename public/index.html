@@ -89,7 +89,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v21 TEST CLOCK</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v22 STABLE</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -210,7 +210,7 @@
             <div class="row"><strong id="nextEventLabel">Next Rotation</strong><span id="subCountdown" class="pill">6:00</span></div>
             <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">At 6:00 you get a reminder only. The clock keeps running. Use the suggested 1-for-1 swap when play allows, or make any manual sub.</div>
             <div class="controls" style="margin-top:8px">
-              <button id="acceptSubBtn" class="good">Make 3-Player Sub</button>
+              <button id="acceptSubBtn" class="good">Make Suggested Swap</button>
               <button id="changeSubBtn">Change Suggestion</button>
               <button id="skipSubBtn">Dismiss Reminder</button>
             </div>
@@ -252,7 +252,7 @@
       <aside>
         <div class="card">
           <strong>Substitution Help</strong>
-          <div class="muted small" style="margin:4px 0 10px">Bench players now appear next to the field for faster subbing. Tap a sideline player, then tap a field position. The normal 6-minute rotation still swaps all 3 bench players together.</div>
+          <div class="muted small" style="margin:4px 0 10px">Tap a sideline player, then tap any field position — including goalie. Subs never move the game clock. The 6:00 reminder suggests one swap at a time: the bench player with the fewest minutes for the field player with the most.</div>
         </div>
 
         <div class="card">
@@ -312,6 +312,17 @@
   const KEY="team71-v5-current", HIST="team71-v5-history";
   const PENDING_HIST="team71-pending-history-v12", HIST_MIGRATED="team71-history-migrated-v12";
   const QLEN=720, GLEN=2880, SUBINT=360;
+
+  // v22: polling used to run flat out at 1s per phone whether or not anybody
+  // was looking. A single forgotten tab was ~86,000 Worker requests a day,
+  // enough to exhaust the free daily allowance before game time. These rates
+  // are still well inside "instant" for a soccer sideline, and nothing polls
+  // at all while the app is in the background.
+  const POLL_STATE_MS=2000, POLL_AUDIT_MS=5000, POLL_ACTIVE_MS=10000;
+
+  // A clock left running while the phone was closed should not silently credit
+  // hours of playing time when the app reopens.
+  const STALE_CLOCK_MS=30*60*1000;
   let seasonHistory=loadJSON(HIST,[]);
   let state=fresh();
   let timerHandle=null;
@@ -344,23 +355,37 @@
       awaitingQuarterTransition:false, planBuilt:false,
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
-      nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,lastTick:null,
+      nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,
       shareCode:"", lastAuditCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
       timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, testSpeed:1, soundEnabled:true
     };
   }
   function $(id){return document.getElementById(id)}
   function loadJSON(k,d){try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}}
-  function save(){localStorage.setItem(KEY,JSON.stringify({...state,lastTick:null}))}
+  function save(){localStorage.setItem(KEY,JSON.stringify(state))}
   function load(){
     const x=loadJSON(KEY,null);
     if(x){
-      state={...fresh(),...x,lastTick:null};
+      state={...fresh(),...x};
       if(!Array.isArray(state.subDone)) state.subDone=[false,false,false,false];
       if(state.soundEnabled==null) state.soundEnabled=true;
       if(!state.gameId) state.gameId="g_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2);
       if(state.clockAnchorElapsed==null) state.clockAnchorElapsed=Number(state.elapsed||0);
       if(state.awaitingQuarterTransition==null) state.awaitingQuarterTransition=false;
+      delete state.lastTick;
+
+      // v22: reopening the app with a stale running clock (phone closed, or the
+      // device clock moved) used to roll the game forward by however much wall
+      // time had passed. Park the clock instead and let the coach press Resume.
+      if(state.running && state.clockStartedAt){
+        const drift=Date.now()-Number(state.clockStartedAt);
+        if(drift<0 || drift>STALE_CLOCK_MS){
+          state.running=false;
+          state.clockStartedAt=null;
+          state.timerOwnerId="";
+          state.clockAnchorElapsed=Number(state.elapsed||0);
+        }
+      }
     }
   }
 
@@ -434,12 +459,20 @@
     if(navigator.vibrate) navigator.vibrate([350,100,350]);
   }
 
+  /**
+   * What the countdown pill is counting down to.
+   *
+   * v22: past the 6:00 mark this used to return `at: e`, i.e. "now", which
+   * pinned the countdown at 00:00 for the last six minutes of every quarter and
+   * hid the run-up to the buzzer. It now always counts down to a real boundary.
+   * The suggested-swap panel is driven separately, so the swap stays available
+   * for the whole quarter.
+   */
   function nextRotationEvent(){
     const e=displayElapsed();
     const q=Math.min(3,state.quarter);
     const qStart=q*QLEN, mid=qStart+SUBINT, end=qStart+QLEN;
     if(!state.subDone[q] && e<mid) return {type:"sub",at:mid,label:"Sub reminder"};
-    if(!state.subDone[q] && e>=mid && e<end) return {type:"sub",at:e,label:"Sub when ready"};
     return {type:"quarter",at:end,label:q===3?"Game end":"Quarter end / goalie change"};
   }
 
@@ -599,8 +632,13 @@
       if(!r.ok) throw new Error("history fetch failed");
       let remote=normalizeHistoryGames((await r.json()).games);
 
-      // One-time migration for game history created before D1 history existed.
-      if(remote.length===0 && local.length>0 && localStorage.getItem(HIST_MIGRATED)!=="1"){
+      // v22: an empty cloud answer must never erase this phone's season.
+      // Previously `seasonHistory = remote` ran unconditionally, so an emptied
+      // or recreated D1 database silently wiped local history and season totals
+      // on the next app load. Now the local copy wins and gets re-uploaded.
+      // Deliberate deletes are unaffected: those clear the local copy first, so
+      // there is nothing left here to resurrect.
+      if(remote.length===0 && local.length>0){
         local.forEach(g=>pending.add(g.id));
         localStorage.setItem(HIST_MIGRATED,"1");
         savePendingHistory(pending);
@@ -634,7 +672,10 @@
         }catch(e){}
       }
 
-      seasonHistory=remote.sort((a,b)=>Date.parse(a.date||0)-Date.parse(b.date||0));
+      // If the re-upload above did not take, keep the local season rather than
+      // adopting an empty cloud as the truth.
+      const authoritative=(remote.length===0 && local.length>0) ? local : remote;
+      seasonHistory=authoritative.sort((a,b)=>Date.parse(a.date||0)-Date.parse(b.date||0));
       localStorage.setItem(HIST,JSON.stringify(seasonHistory));
       historyLoadedFromCloud=true;
       renderHistory();
@@ -698,7 +739,9 @@
     renderHistory();
 
     try{
-      const r=await fetch("/api/history",{method:"DELETE"});
+      // The Worker refuses a bulk wipe without this token, so a stray or
+      // replayed request cannot take out the season.
+      const r=await fetch("/api/history?confirm=DELETE-ALL",{method:"DELETE"});
       if(!r.ok) throw new Error("delete all failed");
     }catch(e){
       alert("History cleared on this device, but the cloud delete could not be confirmed. Try again when online.");
@@ -789,16 +832,43 @@
 
   function startActivePolling(){
     if(activePollHandle) clearInterval(activePollHandle);
-    activePollHandle=setInterval(()=>{ if(!state.shareCode) fetchActiveGame(); },5000);
+    activePollHandle=setInterval(()=>{ if(!state.shareCode) fetchActiveGame(); },POLL_ACTIVE_MS);
   }
 
   function startAuditPolling(){
     if(auditPollHandle) clearInterval(auditPollHandle);
     if(state.shareCode){
-      auditPollHandle=setInterval(loadAudit,3000);
+      auditPollHandle=setInterval(loadAudit,POLL_AUDIT_MS);
       loadAudit();
     }
   }
+
+  function stopAllPolling(){
+    [cloudPollHandle,auditPollHandle,activePollHandle].forEach(h=>{ if(h) clearInterval(h) });
+    cloudPollHandle=auditPollHandle=activePollHandle=null;
+  }
+
+  function startAllPolling(){
+    startCloudPolling();
+    startAuditPolling();
+    startActivePolling();
+  }
+
+  /**
+   * A backgrounded phone in a coach's pocket does not need live data, and the
+   * browser throttles its timers anyway. Stopping cleanly and catching up on
+   * return is both cheaper and more predictable than being throttled.
+   */
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden){
+      stopAllPolling();
+      return;
+    }
+    startAllPolling();
+    // Settle the official clock immediately rather than waiting for the next tick.
+    if(state.running && state.timerOwnerId===CLIENT_ID) tick();
+    else renderGame();
+  });
 
   function randomGameCode(){
     const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -821,7 +891,6 @@
   }
   function cloudPayload(){
     const copy=JSON.parse(JSON.stringify(state));
-    copy.lastTick=null;
     copy.lastCloudUpdate=Date.now();
     return copy;
   }
@@ -901,17 +970,14 @@
           running:state.running, quarter:state.quarter,
           timerOwnerId:state.timerOwnerId, clockStartedAt:state.clockStartedAt,
           clockAnchorElapsed:state.clockAnchorElapsed,
-          awaitingQuarterTransition:state.awaitingQuarterTransition,
-          lastTick:state.lastTick
+          awaitingQuarterTransition:state.awaitingQuarterTransition
         } : null;
-        state={...fresh(),...remote,...localShare,lastTick:null};
+        state={...fresh(),...remote,...localShare};
         if(!goalieDraft || state.planBuilt) goalieDraft=[...(state.goaliePlan||["","","",""])];
-        if(localClock){
-          Object.assign(state,localClock);
-        }else if(state.running){
-          state.lastTick=Date.now();
-        }
-        localStorage.setItem(KEY,JSON.stringify({...state,lastTick:null}));
+        // This phone's own running clock is authoritative for this phone; a
+        // remote snapshot must not drag it backwards.
+        if(localClock) Object.assign(state,localClock);
+        localStorage.setItem(KEY,JSON.stringify(state));
         renderAll();
         applyingRemote=false;
       }
@@ -924,7 +990,7 @@
   function startCloudPolling(){
     if(cloudPollHandle)clearInterval(cloudPollHandle);
     if(state.shareCode){
-      cloudPollHandle=setInterval(cloudPull,1000);
+      cloudPollHandle=setInterval(cloudPull,POLL_STATE_MS);
       cloudPull();
     }
   }
@@ -964,9 +1030,9 @@
     setStatus("Viewer mode: this phone follows the live game but cannot make changes.");
     return false;
   }
-  function actionSave(domains=["all"]){
+  function actionSave(domains=["all"],activate=false){
     save();
-    cloudPush(domains);
+    cloudPush(domains,activate);
   }
 
   function fmt(s){s=Math.max(0,Math.floor(s));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0")}
@@ -975,8 +1041,42 @@
   function onField(){return slots.map(s=>state.lineup[s]).filter(Boolean)}
   function bench(){const set=new Set(onField());return activePool().filter(p=>!set.has(p))}
   function short(n){if(!n)return"Empty";const a=n.split(" ");return a[0]+" "+(a[1]?a[1][0]+".":"")}
-  function pushUndo(label){undoStack.push({label,state:JSON.parse(JSON.stringify(state))});if(undoStack.length>20)undoStack.shift()}
-  function undo(){const u=undoStack.pop();if(!u){setStatus("Nothing to undo.");return} state=u.state;actionSave(["all"]);renderAll();setStatus("Undid: "+u.label)}
+  /**
+   * Fields Undo must never restore.
+   *
+   * v22: Undo used to snapshot and restore the WHOLE state and push it with
+   * changedDomains ["all"], which had two nasty effects in a two-phone game.
+   * It overwrote everything the other coach had done since the snapshot, and it
+   * put back the clock — so tapping Undo could yank a running clock backwards
+   * on the other phone. Restoring a stale syncVersion also meant the next poll
+   * saw the server as newer and instantly cancelled the undo.
+   *
+   * Undo now covers roster, lineup, goalie plan and score. It never touches the
+   * clock, accumulated minutes, or the shared-session identity.
+   */
+  const UNDO_PROTECTED=[
+    "shareCode","shareRole","syncVersion","lastCloudUpdate","gameId",
+    "running","timerOwnerId","clockStartedAt","clockAnchorElapsed","elapsed","quarter",
+    "ended","awaitingQuarterTransition","testSpeed",
+    "play","gk"
+  ];
+
+  function pushUndo(label){
+    const snap=JSON.parse(JSON.stringify(state));
+    UNDO_PROTECTED.forEach(k=>{delete snap[k]});
+    undoStack.push({label,state:snap});
+    if(undoStack.length>20)undoStack.shift();
+  }
+
+  function undo(){
+    if(!guardEdit())return;
+    const u=undoStack.pop();
+    if(!u){setStatus("Nothing to undo.");return}
+    state={...state,...u.state};
+    actionSave(["setup","lineup","score"]);
+    renderAll();
+    setStatus("Undid: "+u.label+" — the game clock and minutes were left alone.");
+  }
 
   document.querySelectorAll(".tabs button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
   function showTab(id){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===id));if(id==="history")renderHistory();if(id==="audit")loadAudit()}
@@ -997,10 +1097,14 @@
     roster.forEach(p=>{
       const r=document.createElement("div");r.className="player-row";
       const name=document.createElement("label");name.innerHTML='<input type="checkbox" '+(state.present[p]?"checked":"")+' style="width:20px;height:20px;margin-right:8px"> <strong>'+p+'</strong>';
-      name.querySelector("input").addEventListener("change",e=>{state.present[p]=e.target.checked;if(!e.target.checked)state.availability[p]="out";actionSave(["setup","lineup"]);renderAll()});
+      // Both Pregame controls go through setAvailability, exactly like the
+      // in-game Player Status buttons. See the note on that function.
+      name.querySelector("input").addEventListener("change",e=>{
+        setAvailability(p, e.target.checked ? (state.availability[p]==="out"?"available":state.availability[p]) : "out", e.target.checked);
+      });
       const avail=document.createElement("select");
       [["available","Available"],["rest","Resting"],["out","Out / Hurt"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.availability[p]===v)o.selected=true;avail.append(o)});
-      avail.addEventListener("change",()=>{state.availability[p]=avail.value;if(avail.value!=="out")state.present[p]=true;actionSave(["setup","lineup"]);renderAll()});
+      avail.addEventListener("change",()=>setAvailability(p,avail.value));
       const gk=document.createElement("select");
       [["yes","Will play GK"],["prefer","Prefer not GK"],["no","Cannot GK"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.gkPref[p]===v)o.selected=true;gk.append(o)});
       gk.addEventListener("change",()=>{state.gkPref[p]=gk.value;actionSave(["setup"])});
@@ -1101,7 +1205,7 @@
       const canonical=await r.json();
 
       const localShare={shareCode:state.shareCode,shareRole:state.shareRole};
-      state={...fresh(),...canonical,...localShare,lastTick:null};
+      state={...fresh(),...canonical,...localShare};
       goalieDraft=[...(state.goaliePlan||["","","",""])];
       save();
       setSyncStatus("live","Shared • plan synced");
@@ -1153,7 +1257,7 @@
     state.planBuilt=true;
     state.suggestedSub=null;
     state.subDone=[false,false,false,false];
-    state.nextSubAt=SUBINT;
+    state.nextSubAt=state.quarter*QLEN+SUBINT;
 
     goalieDraft=[...state.goaliePlan];
     save();
@@ -1248,33 +1352,59 @@
     });
   }
 
-  function setAvailability(p,v){
+  /**
+   * The single path for "can this player be used right now", shared by the
+   * Pregame roster and the in-game Player Status buttons.
+   *
+   * v22: the Pregame controls used to flip the flag and stop there. Marking a
+   * girl Out from the Pregame tab during a game therefore left her standing on
+   * the visual field, still accumulating minutes, and still listed as a planned
+   * goalie for a later quarter — the exact pregame-versus-game mismatch the
+   * v16-v19 goalie work kept chasing. Both screens now do the whole job.
+   *
+   * @param {string}  p        player name
+   * @param {string}  v        "available" | "rest" | "out"
+   * @param {boolean} present  optional attendance override
+   */
+  function setAvailability(p,v,present=null){
+    if(!guardEdit())return;
     pushUndo("player status");
+
+    if(present!==null) state.present[p]=present;
+    else if(v!=="out") state.present[p]=true;
     state.availability[p]=v;
     state.suggestedSub=null;
 
-    if(v!=="available"){
+    const usable=state.present[p] && v==="available";
+    if(!usable){
+      // Only re-plan quarters that have not been played yet.
       state.goaliePlan=state.goaliePlan.map((g,i)=>
         g===p && i>=state.quarter ? pickReplacementGoalie(i,p) : g
       );
 
       const slot=slots.find(s=>state.lineup[s]===p);
       if(slot){
+        settleClock();          // bank her minutes up to this instant first
         state.lineup[slot]=null;
         autoReplaceEmpty(slot);
       }
-      if(state.selectedBench===p)state.selectedBench=null;
+      if(state.selectedBench===p) state.selectedBench=null;
     }
 
-    actionSave(["setup","lineup"]);
+    const label=state.present[p] ? v : "not present";
+    actionSave(["setup","lineup","stats","clock"]);
     renderAll();
-    addAudit("Player status",p+" → "+v);setStatus(p+" marked "+v+".");
+    addAudit("Player status",p+" → "+label);
+    setStatus(p+" marked "+label+".");
   }
 
   function pickReplacementGoalie(q,exclude){
     const pool=activePool().filter(p=>p!==exclude&&state.gkPref[p]!=="no");
     if(!pool.length)return"";
-    return pool.sort((a,b)=>state.gk[a]-state.gk[b])[0];
+    return pool.sort((a,b)=>
+      (state.gkPref[a]==="prefer"?1:0)-(state.gkPref[b]==="prefer"?1:0) ||
+      state.gk[a]-state.gk[b]
+    )[0];
   }
   function autoReplaceEmpty(slot){
     const b=bench().sort((a,b)=>state.play[a]-state.play[b]); if(!b.length)return;
@@ -1289,8 +1419,7 @@
     // Settle playing/GK time exactly to the substitution instant, then
     // re-anchor the same running game clock. The substitution never changes
     // elapsed game time.
-    const wasRunning=state.running && state.timerOwnerId===CLIENT_ID;
-    if(wasRunning) advanceClockToNow();
+    const wasRunning=settleClock();
 
     pushUndo(slot==="GK" ? "manual goalie substitution" : "manual substitution");
 
@@ -1303,12 +1432,6 @@
     // displayed goalie assignment. Future quarter plans remain untouched.
     if(slot==="GK"){
       state.goaliePlan[state.quarter]=incoming;
-    }
-
-    if(wasRunning){
-      state.clockAnchorElapsed=state.elapsed;
-      state.clockStartedAt=Date.now();
-      state.lastTick=Date.now();
     }
 
     actionSave(wasRunning ? ["lineup","clock","stats","setup"] : ["lineup","setup"]);
@@ -1344,34 +1467,35 @@
     };
   }
 
+  /**
+   * v22: the swap panel no longer switches itself off once the countdown flips
+   * to the quarter boundary. The countdown and the suggestion are independent:
+   * one says how long until the next whistle, the other says who to swap. A
+   * suggested swap stays available for the whole quarter.
+   */
   function renderSubSuggestion(){
     const event=nextRotationEvent();
-    const e=displayElapsed();
-    const until=Math.max(0,event.at-e);
-    $("subCountdown").textContent=fmt(until);
-    $("nextEventLabel").textContent=event.type==="sub"?"Sub Opportunity":event.label;
+    $("subCountdown").textContent=fmt(Math.max(0,event.at-displayElapsed()));
+    $("nextEventLabel").textContent=event.label;
     suggestSub(false);
 
-    if(event.type==="quarter"){
-      $("subSuggestion").innerHTML="<strong>"+event.label+"</strong><br>Goalie rotation occurs at the quarter break.";
-      $("acceptSubBtn").disabled=true;
-      $("acceptSubBtn").textContent="Reminder Complete";
-      return;
-    }
+    const btn=$("acceptSubBtn");
+    btn.textContent="Make Suggested Swap";
 
-    if(!state.suggestedSub){
-      $("subSuggestion").textContent="No substitution needed.";
-      $("acceptSubBtn").disabled=true;
+    if(state.ended || !state.suggestedSub){
+      $("subSuggestion").textContent=bench().length
+        ? "No substitution needed right now."
+        : "Nobody on the bench — no swap available.";
+      btn.disabled=true;
       return;
     }
 
     const s=state.suggestedSub;
     const pairs=s.incoming.map((p,i)=>p+" IN → "+s.outgoingPlayers[i]+" OUT");
-    $("subSuggestion").innerHTML =
-      "<strong>Suggested swap</strong><br>" + pairs.join("<br>") +
+    $("subSuggestion").innerHTML=
+      "<strong>Suggested swap</strong><br>"+pairs.join("<br>")+
       "<br><span class='muted small'>Clock keeps running. Make this swap only when play allows.</span>";
-    $("acceptSubBtn").disabled=false;
-    $("acceptSubBtn").textContent = "Make Suggested Swap";
+    btn.disabled=!canEdit();
   }
 
   function acceptSuggestedSub(){
@@ -1381,8 +1505,7 @@
     // An early scheduled sub must NOT move the game clock. Settle official
     // time to this instant, make the lineup change, then re-anchor at the
     // exact same elapsed game time.
-    const wasRunning=state.running && state.timerOwnerId===CLIENT_ID;
-    if(wasRunning) advanceClockToNow();
+    const wasRunning=settleClock();
 
     pushUndo("scheduled rotation");
     const s=state.suggestedSub;
@@ -1396,15 +1519,13 @@
     // make additional one-for-one swaps later as needed.
     state.nextSubAt=currentQuarterBoundary();
 
-    if(wasRunning){
-      state.clockAnchorElapsed=state.elapsed;
-      state.clockStartedAt=Date.now();
-      state.lastTick=Date.now();
-    }
+    // Work out the NEXT recommended swap before saving, so the fresh suggestion
+    // is what gets persisted and shared. Previously the save ran first and both
+    // this phone's storage and the other coach's phone received a null.
+    suggestSub(true);
 
     actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup"]);
     addAudit("Scheduled substitution",desc);
-    suggestSub(true);
     renderAll();
     setStatus("Sub made: "+desc+". Clock continued running.");
   }
@@ -1449,8 +1570,19 @@
   function teamGoal(p){if(!guardEdit())return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Team 71 goal",p+" scored — "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Goal: "+p)}
   function oppGoal(){if(!guardEdit())return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Opponent goal","Score "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Opponent goal recorded.")}
   function undoLastGoal(){
-    const i=[...state.goalLog].map((_,i)=>i).pop();if(i==null){setStatus("No goal to undo.");return}
-    pushUndo("undo last goal");const g=state.goalLog.pop();if(g.type==="team"){state.ourScore=Math.max(0,state.ourScore-1);state.goals[g.player]=Math.max(0,state.goals[g.player]-1)}else state.theirScore=Math.max(0,state.theirScore-1);actionSave(["score"]);addAudit("Goal undone",g.type==="team"?(g.player+" goal removed"):"Opponent goal removed");renderAll()
+    if(!guardEdit())return;
+    if(!state.goalLog.length){setStatus("No goal to undo.");return}
+    pushUndo("undo last goal");
+    const g=state.goalLog.pop();
+    if(g.type==="team"){
+      state.ourScore=Math.max(0,state.ourScore-1);
+      state.goals[g.player]=Math.max(0,(state.goals[g.player]||0)-1);
+    }else{
+      state.theirScore=Math.max(0,state.theirScore-1);
+    }
+    actionSave(["score"]);
+    addAudit("Goal undone",g.type==="team"?(g.player+" goal removed"):"Opponent goal removed");
+    renderAll();
   }
 
   function renderMinutes(){
@@ -1503,13 +1635,13 @@
     }
 
     unlockAudio();
+    const starting=!state.running;
 
     if(!state.running){
       state.running=true;
       state.timerOwnerId=CLIENT_ID;
       state.clockAnchorElapsed=Number(state.elapsed||0);
       state.clockStartedAt=Date.now();
-      state.lastTick=Date.now();
       requestWakeLock();
       if(!timerHandle)timerHandle=setInterval(tick,250);
       setStatus("Game clock running.");
@@ -1525,8 +1657,26 @@
       addAudit("Clock paused","");
     }
 
-    actionSave(["clock","stats"]);
+    // Starting the clock re-publishes this game as the active one, so the other
+    // coach's Join buttons come back even if the active row was cleared.
+    actionSave(["clock","stats"],starting);
     renderGame();
+  }
+
+  /**
+   * Bank official playing time up to this instant and re-anchor the clock at the
+   * same elapsed game time. Used before any lineup change, so a substitution
+   * credits minutes correctly and never moves the game clock.
+   *
+   * @returns {boolean} whether this phone was running the clock
+   */
+  function settleClock(){
+    const owns=state.running && state.timerOwnerId===CLIENT_ID;
+    if(!owns) return false;
+    advanceClockToNow();
+    state.clockAnchorElapsed=state.elapsed;
+    state.clockStartedAt=Date.now();
+    return true;
   }
 
   function advanceClockToNow(){
@@ -1616,8 +1766,11 @@
         state.nextSubAt=state.quarter*QLEN+SUBINT;
         if(Object.values(preview).filter(Boolean).length===5){
           state.lineup={GK:preview.GK,LB:preview.LB,RB:preview.RB,M:preview.M,F:preview.F};
+          // Record who actually went in goal. Without this the Goalie Rotation
+          // strip kept showing a planned keeper who was no longer available.
+          state.goaliePlan[state.quarter]=preview.GK;
         }
-        actionSave(["clock","stats","lineup"]);
+        actionSave(["clock","stats","lineup","setup"]);
         renderAll();
         setStatus("Quarter "+(state.quarter+1)+" ready. Position players, then press Start.");
         return;
@@ -1648,9 +1801,15 @@
       : null;
 
     if(!g){
+      // v22: the fallback used to ignore "Prefer not GK" and could put a
+      // reluctant keeper in goal ahead of a willing one. Willing players first,
+      // then fewest goalie minutes.
       g=pool
         .filter(p=>state.gkPref[p]!=="no")
-        .sort((a,b)=>state.gk[a]-state.gk[b])[0] || null;
+        .sort((a,b)=>
+          (state.gkPref[a]==="prefer"?1:0)-(state.gkPref[b]==="prefer"?1:0) ||
+          state.gk[a]-state.gk[b]
+        )[0] || null;
     }
 
     const ranked=pool
@@ -1716,11 +1875,12 @@
       M:preview.M,
       F:preview.F
     };
+    state.goaliePlan[state.quarter]=preview.GK;
 
     $("quarterModal").classList.remove("show");
     releaseWakeLock();
 
-    actionSave(["clock","lineup","stats"]);
+    actionSave(["clock","lineup","stats","setup"]);
     addAudit("Quarter lineup prepared",
       "Quarter "+(state.quarter+1)+" — GK "+(state.lineup.GK||"—"));
     renderAll();
@@ -1745,9 +1905,7 @@
 
     if(!confirm("Move to Quarter "+(state.quarter+2)+" and show its lineup? The clock will pause.")) return;
 
-    if(state.running && state.timerOwnerId===CLIENT_ID){
-      advanceClockToNow();
-    }
+    settleClock();   // bank minutes played up to the whistle
 
     const targetQuarter=state.quarter+1;
     const preview=previewNextQuarterLineup(targetQuarter);
@@ -1777,9 +1935,10 @@
       M:preview.M,
       F:preview.F
     };
+    state.goaliePlan[state.quarter]=preview.GK;
 
     releaseWakeLock();
-    actionSave(["clock","lineup","stats"]);
+    actionSave(["clock","lineup","stats","setup"]);
     addAudit("Moved to next quarter",
       "Quarter "+(state.quarter+1)+" setup — GK "+(state.lineup.GK||"—"));
     renderAll();
@@ -1821,7 +1980,11 @@
     seasonHistory.push(game);
     localStorage.setItem(HIST,JSON.stringify(seasonHistory));
 
-    actionSave(["all"]);
+    // v22: this push used to be fire-and-forget, so it could land AFTER the
+    // deletes below and re-create the game row — leaving the other phone stuck
+    // in a game that had already ended. Awaited now, then torn down.
+    save();
+    await cloudPush(["clock","score","stats","lineup","setup"]);
     renderAll();
     setStatus("Saving game to season history…");
 
@@ -1915,7 +2078,7 @@
     const blob=new Blob([JSON.stringify({version:5,history:seasonHistory,current:state},null,2)],{type:"application/json"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="team71-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)
   }
-  $("importFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(Array.isArray(j.history))seasonHistory=j.history;if(j.current)state={...fresh(),...j.current,running:false,clockStartedAt:null,timerOwnerId:"",lastTick:null};localStorage.setItem(HIST,JSON.stringify(seasonHistory));actionSave(["all"]);renderAll();alert("Backup restored.")}catch(err){alert("That backup file could not be read.")}};r.readAsText(f)});
+  $("importFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(Array.isArray(j.history))seasonHistory=j.history;if(j.current)state={...fresh(),...j.current,running:false,clockStartedAt:null,timerOwnerId:""};localStorage.setItem(HIST,JSON.stringify(seasonHistory));actionSave(["all"]);renderAll();alert("Backup restored.")}catch(err){alert("That backup file could not be read.")}};r.readAsText(f)});
 
   $("opponent").addEventListener("input",()=>{state.opponent=$("opponent").value;actionSave(["setup"])});$("homeAway").addEventListener("change",()=>{state.homeAway=$("homeAway").value;actionSave(["setup"])});
   $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});actionSave(["setup","lineup"]);renderAll()};
@@ -1944,7 +2107,6 @@
   function renderAll(){renderSetup();renderGoaliePlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
   load();
   if(state.running && state.timerOwnerId===CLIENT_ID){
-    state.lastTick=Date.now();
     requestWakeLock();
     if(!timerHandle)timerHandle=setInterval(tick,250);
   }
