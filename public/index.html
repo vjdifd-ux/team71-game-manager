@@ -1503,6 +1503,14 @@
 
     pushUndo("choose replacement");
     state.lineup[slot]=incoming;
+    state.selectedBench=null;
+    // The suggestion the coach was looking at (if any) was computed before
+    // this slot was filled, so it may still list the just-placed player as
+    // a free bench candidate. Every other lineup change clears this for the
+    // same reason (see makeManualSub, setAvailability); leaving it stale
+    // here let a later "Sub In Whole Bench" replay that pairing and put the
+    // same player on the field twice.
+    state.suggestedSub=null;
 
     // She's covering for an emergency departure: the fairness engine leaves
     // her on the field and leaves the player she covered for out of the

@@ -348,6 +348,26 @@ test("a manual sub always overrides an active cover lock", async () => {
   app.close();
 });
 
+test("REGRESSION: confirming a replacement doesn't leave a stale suggestion that duplicates her onto a second slot", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 400);                          // past 6:00, so a suggestion already exists
+
+  const victim = app.state().lineup.F;
+  await app.setAvailPregame(victim, "rest");     // recomputes a suggestion while F sits empty
+  const [cover] = app.replaceOptions();
+  await app.confirmReplacement(cover);           // cover now sits at F
+  assert.equal(app.state().lineup.F, cover);
+
+  await app.click("acceptSubBtn");               // must not replay a stale pairing that used `cover`
+
+  const onField = app.onField().filter(Boolean);
+  assert.equal(new Set(onField).size, onField.length,
+    "no player should end up on the field in two slots at once");
+  assert.equal(app.state().lineup.F, cover, "the covering player must stay put, not get moved too");
+  app.close();
+});
+
 test("the shipped v21 build left her on the field collecting minutes", async () => {
   const app = await readyGame({ html: V21_HTML });
   await app.click("startPauseBtn");
