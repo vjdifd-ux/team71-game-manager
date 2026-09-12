@@ -128,7 +128,7 @@ The D1 `game_state` table is created automatically by the Worker on first use.
 
 
 ## v16 Goalie Hotfix
-- Build Plan now preserves valid manually-selected Q1–Q4 goalies instead of replacing them with automatic defaults. 
+- Build Plan now preserves valid manually-selected Q1–Q4 goalies instead of replacing them with automatic defaults.
 - Fixed quarter-transition off-by-one: the lineup previewed for the next quarter is now the exact lineup applied when that quarter starts.
 - Added emergency/manual goalie substitution: select a bench player, then tap the goalie on the field.
 - New Game explicitly clears Q1–Q4 goalie assignments and the starting lineup while preserving each player's GK eligibility preference.

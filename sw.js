@@ -1,4 +1,4 @@
-const CACHE='team71-v16-goalie-hotfix';
+const CACHE='team71-v18-next-quarter';
 const STATIC=['./manifest.json','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{

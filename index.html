@@ -89,7 +89,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v16 GOALIE HOTFIX</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v18 NEXT QUARTER</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -190,7 +190,7 @@
       </div>
       <div class="controls" style="margin-top:10px">
         <button class="primary" id="startPauseBtn">Start</button>
-        <button id="nextQuarterBtn">Next Quarter</button>
+        <button id="nextQuarterBtn">End Period / Set Up Next Quarter</button>
         <button class="danger" id="endGameBtn">End Game</button>
         <button id="newGameBtn">New Game / Reset</button>
         <button id="undoBtn">Undo</button>
@@ -220,7 +220,7 @@
         </div>
 
         <div class="card">
-          <div class="row"><strong>Field</strong><span class="muted small">Tap a bench player on the sideline, then tap a field position</span></div>
+          <div class="row"><strong>Field</strong><span class="muted small">Tap a bench player, then tap any field position — including goalie</span></div>
           <div class="field-stage">
             <div class="field">
               <div class="box top"></div><div class="half"></div><div class="circle"></div><div class="box bottom"></div>
@@ -296,7 +296,7 @@
   <div class="modal-card">
     <h2 style="margin-top:0">Quarter Complete</h2>
     <div id="quarterTransition"></div>
-    <div class="controls" style="margin-top:14px"><button class="primary" id="startNextQuarterBtn">Start Quarter With This Lineup</button><button id="closeQuarterBtn">Not Yet</button></div>
+    <div class="controls" style="margin-top:14px"><button class="primary" id="startNextQuarterBtn">Set Up This Quarter Lineup</button><button id="closeQuarterBtn">Not Yet</button></div>
   </div>
 </div>
 
@@ -1018,8 +1018,13 @@
         if(!guardEdit())return;
         pushUndo("goalie plan");
         state.goaliePlan[q]=sel.value;
-        if(q===state.quarter && state.elapsed===q*QLEN) applyQuarterGoalie();
-        actionSave(["setup","lineup"]);renderAll();
+
+        // Pregame goalie planning is intentionally local until Build Game Plan.
+        // This avoids an older cloud response reverting a coach's most recent
+        // dropdown choice while several quarters are being selected quickly.
+        save();
+        renderGoaliePlanner();
+        renderSetup();
       };
       card.append(tag,sel);box.append(card);
     }
@@ -1053,7 +1058,15 @@
     setStatus("Goalie plan cleared.");
   }
 
-  function buildPlan(){
+  function readGoaliePlannerSelections(){
+    const cards=[...document.querySelectorAll("#goaliePlanner .goalie-q")];
+    return [0,1,2,3].map(q=>{
+      const sel=cards[q]?.querySelector("select");
+      return sel ? sel.value : (state.goaliePlan[q]||"");
+    });
+  }
+
+  async function buildPlan(){
     if(!guardEdit())return;
     state.opponent=$("opponent").value.trim()||"Opponent"; state.homeAway=$("homeAway").value;
     const pool=activePool();if(pool.length<5){alert("You need at least 5 available players.");return}
@@ -1062,7 +1075,10 @@
     let eligible=pool.filter(p=>state.gkPref[p]!=="no");
     if(!eligible.length){alert("At least one available player must be allowed to play goalie.");return}
     let plannedCounts=Object.fromEntries(roster.map(p=>[p,0]));
-    const existingPlan=Array.isArray(state.goaliePlan)?[...state.goaliePlan]:["","","",""];
+
+    // The visible dropdowns are the source of truth at the instant Build Game
+    // Plan is pressed. This guarantees Q1 on the field matches Q1 on screen.
+    const existingPlan=readGoaliePlannerSelections();
     state.goaliePlan=["","","",""];
 
     for(let q=0;q<4;q++){
@@ -1085,14 +1101,35 @@
     const gk=state.goaliePlan[0];
     const field=pool.filter(p=>p!==gk).sort((a,b)=>stats[a].minutes-stats[b].minutes).slice(0,4);
     state.lineup={GK:gk,LB:field[0]||null,RB:field[1]||null,M:field[2]||null,F:field[3]||null};
-    state.planBuilt=true; state.suggestedSub=null;state.subDone=[false,false,false,false];state.nextSubAt=SUBINT;actionSave(["setup","lineup"]);renderAll();showTab("game");addAudit("Game plan built","vs "+state.opponent);setStatus("Game plan built. Review the field, then start the clock.");
+
+    // Safety invariant: Q1 planner and the live field must always agree.
+    state.lineup.GK=state.goaliePlan[0];
+    state.planBuilt=true;
+    state.suggestedSub=null;
+    state.subDone=[false,false,false,false];
+    state.nextSubAt=SUBINT;
+
+    // Save locally first, then wait for the shared-state merge before showing
+    // the field. This keeps both coaches on the same goalie/lineup snapshot.
+    save();
+    await cloudPush(["setup","lineup"]);
+    renderAll();
+    showTab("game");
+    addAudit("Game plan built","Q1 GK "+state.lineup.GK+" • vs "+state.opponent);
+    setStatus("Game plan built. Q1 goalie: "+state.lineup.GK+". Review the field, then start the clock.");
   }
 
   function renderGame(){
     if($("soundToggle")) $("soundToggle").checked=state.soundEnabled!==false;
     $("gameLabel").textContent="Team 71 vs "+state.opponent;
     $("oppName").textContent=state.opponent;$("ourScore").textContent=state.ourScore;$("theirScore").textContent=state.theirScore;$("quickUs").textContent=state.ourScore;$("quickThem").textContent=state.theirScore;
-    $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+" of 4</strong>";
+    const atQuarterStart = !state.running && state.elapsed===state.quarter*QLEN && state.elapsed>0;
+    $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+" of 4</strong>"+
+      (atQuarterStart ? " <span class='pill'>Lineup ready — press Start when positioned</span>" : "");
+
+    if(state.quarter===0 && state.elapsed===0 && state.goaliePlan[0] && state.lineup.GK!==state.goaliePlan[0]){
+      state.lineup.GK=state.goaliePlan[0];
+    }
     $("timer").textContent=fmt(displayElapsed());
     $("startPauseBtn").textContent=state.awaitingQuarterTransition ? "Start Next Quarter" : (state.running?"Pause":(state.elapsed?"Resume":"Start"));
     $("startPauseBtn").disabled = state.ended || (!canEdit());
@@ -1551,13 +1588,18 @@
     const preview=previewNextQuarterLineup(targetQuarter);
 
     if(Object.values(preview).filter(Boolean).length!==5){
-      setStatus("Need 5 available players before starting the next quarter.");
+      setStatus("Need 5 available players before setting up the next quarter.");
       return;
     }
 
     pushUndo("quarter transition");
     state.quarter=targetQuarter;
     state.awaitingQuarterTransition=false;
+    state.elapsed=targetQuarter*QLEN;
+    state.clockAnchorElapsed=state.elapsed;
+    state.clockStartedAt=null;
+    state.timerOwnerId="";
+    state.running=false;
     state.nextSubAt=state.quarter*QLEN+SUBINT;
     state.subDone[state.quarter]=false;
     state.suggestedSub=null;
@@ -1572,18 +1614,13 @@
     };
 
     $("quarterModal").classList.remove("show");
+    releaseWakeLock();
 
-    state.running=true;
-    state.timerOwnerId=CLIENT_ID;
-    state.clockAnchorElapsed=state.elapsed;
-    state.clockStartedAt=Date.now();
-    state.lastTick=Date.now();
-    requestWakeLock();
-
-    if(!timerHandle)timerHandle=setInterval(tick,250);
     actionSave(["clock","lineup","stats"]);
-    addAudit("Quarter started","Quarter "+(state.quarter+1)+" — GK "+(state.lineup.GK||"—"));
+    addAudit("Quarter lineup prepared",
+      "Quarter "+(state.quarter+1)+" — GK "+(state.lineup.GK||"—"));
     renderAll();
+    setStatus("Quarter "+(state.quarter+1)+" lineup is ready. Position the girls, then press Start.");
   }
   function applyQuarterGoalie(){
     const g=state.goaliePlan[state.quarter];if(!g||!activePool().includes(g))return;
@@ -1597,15 +1634,58 @@
   }
   function nextQuarter(){
     if(!guardEdit())return;
-    if(state.quarter>=3)return;
-
-    if(state.awaitingQuarterTransition || state.elapsed>=currentQuarterBoundary()-0.5){
-      state.awaitingQuarterTransition=true;
-      showQuarterTransition();
+    if(state.quarter>=3){
+      setStatus("Already in the 4th quarter.");
       return;
     }
 
-    alert("The app changes quarters automatically at 12:00. The Next Quarter button becomes available at the period break.");
+    // If the timer-owning phone is running, settle player time exactly to
+    // this click before moving to the next period.
+    if(state.running && state.timerOwnerId===CLIENT_ID){
+      advanceClockToNow();
+    }
+
+    const targetQuarter=state.quarter+1;
+    const preview=previewNextQuarterLineup(targetQuarter);
+
+    if(Object.values(preview).filter(Boolean).length!==5){
+      setStatus("Need 5 available players before moving to the next quarter.");
+      return;
+    }
+
+    pushUndo("move to next quarter");
+
+    // Explicitly ending the period advances the official game clock to the
+    // start boundary of the next quarter. Unlike a substitution, this button
+    // is intentionally a period-ending action.
+    state.running=false;
+    state.clockStartedAt=null;
+    state.timerOwnerId="";
+    state.quarter=targetQuarter;
+    state.elapsed=targetQuarter*QLEN;
+    state.clockAnchorElapsed=state.elapsed;
+    state.awaitingQuarterTransition=false;
+    state.subDone[state.quarter]=false;
+    state.suggestedSub=null;
+    state.selectedBench=null;
+    state.nextSubAt=state.quarter*QLEN+SUBINT;
+
+    // Put the NEXT quarter lineup onto the field immediately so the coaches
+    // can physically position the girls before starting the clock.
+    state.lineup={
+      GK:preview.GK,
+      LB:preview.LB,
+      RB:preview.RB,
+      M:preview.M,
+      F:preview.F
+    };
+
+    releaseWakeLock();
+    actionSave(["clock","lineup","stats"]);
+    addAudit("Moved to next quarter",
+      "Quarter "+(state.quarter+1)+" setup — GK "+(state.lineup.GK||"—"));
+    renderAll();
+    setStatus("Quarter "+(state.quarter+1)+" ready. Position the girls, then press Start.");
   }
 
   async function endGame(){
