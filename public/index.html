@@ -110,6 +110,22 @@
     </div>
 
 
+
+    <div class="card" id="activeGameCard">
+      <div class="row">
+        <div>
+          <strong>Active Team 71 Game</strong>
+          <div class="muted small" style="margin-top:4px">If another coach already started a shared game, it will appear here automatically.</div>
+        </div>
+        <button id="refreshActiveBtn">Refresh</button>
+      </div>
+      <div id="activeGameInfo" class="notice" style="margin-top:10px">Checking for an active game…</div>
+      <div class="controls" style="margin-top:10px">
+        <button id="joinActiveViewerBtn" class="primary" disabled>Join as Viewer</button>
+        <button id="joinActiveCoachBtn" disabled>Join as Coach</button>
+      </div>
+    </div>
+
     <div class="card">
       <div class="row">
         <div>
@@ -246,7 +262,7 @@
   </section>
 
   <section id="history" class="panel">
-    <div class="card"><div class="row"><strong>Season History</strong><button id="historyNewGameBtn">Start New Game</button></div><div class="muted small" style="margin-top:4px">Saved on this device.</div><div id="historyList" style="margin-top:10px"></div></div>
+    <div class="card"><div class="row"><strong>Season History</strong><div class="controls"><button id="historyNewGameBtn">Start New Game</button><button id="deleteAllHistoryBtn" class="danger">Delete All History</button></div></div><div class="muted small" style="margin-top:4px">Shared history is saved in the Team 71 cloud database and also cached on this device.</div><div class="muted small" style="margin-top:4px">Saved on this device.</div><div id="historyList" style="margin-top:10px"></div></div>
     <div class="card"><strong>Season Totals</strong><div style="overflow:auto;margin-top:8px"><table><thead><tr><th>Player</th><th>Minutes</th><th>GK Qtrs</th><th>Goals</th></tr></thead><tbody id="seasonTotals"></tbody></table></div></div>
   </section>
 
@@ -287,6 +303,8 @@
   let audioCtx=null;
   let lastClockCloudPush=0;
   let lastAlertKey="";
+  let activeGameCache=null;
+  let historyLoadedFromCloud=false;
 
   function fresh(){
     return {
@@ -389,6 +407,116 @@
     setStatus("New game ready.");
   }
 
+
+  async function fetchActiveGame(){
+    try{
+      const r=await fetch("/api/active",{cache:"no-store"});
+      if(r.status===404){
+        activeGameCache=null;
+        renderActiveGame();
+        return null;
+      }
+      if(!r.ok) throw new Error("active lookup failed");
+      activeGameCache=await r.json();
+      renderActiveGame();
+      return activeGameCache;
+    }catch(e){
+      const info=$("activeGameInfo");
+      if(info) info.textContent="Could not check for an active game.";
+      return null;
+    }
+  }
+
+  function renderActiveGame(){
+    const info=$("activeGameInfo");
+    const v=$("joinActiveViewerBtn"), c=$("joinActiveCoachBtn");
+    if(!info||!v||!c) return;
+
+    if(!activeGameCache){
+      info.textContent="No active shared game right now.";
+      v.disabled=true;c.disabled=true;
+      return;
+    }
+
+    const g=activeGameCache;
+    const elapsed=Number(g.elapsed||0);
+    info.innerHTML="<strong>Team 71 vs "+(g.opponent||"Opponent")+"</strong><br>"+
+      "Q"+(Number(g.quarter||0)+1)+" • "+fmt(elapsed)+" • "+
+      "Team 71 "+Number(g.ourScore||0)+" – "+Number(g.theirScore||0)+" "+(g.opponent||"Opponent");
+    v.disabled=false;c.disabled=false;
+  }
+
+  async function joinActiveGame(role){
+    if(!activeGameCache?.code){
+      await fetchActiveGame();
+      if(!activeGameCache?.code) return;
+    }
+    state.shareCode=activeGameCache.code;
+    state.shareRole=role;
+    state.syncVersion=0;
+    save();
+    await cloudPull();
+    await loadCloudHistory();
+    startCloudPolling();
+    renderAll();
+    showTab("game");
+    setStatus(role==="viewer" ? "Joined active game as Viewer." : "Joined active game as Coach.");
+  }
+
+  async function loadCloudHistory(){
+    try{
+      const r=await fetch("/api/history",{cache:"no-store"});
+      if(!r.ok) throw new Error("history fetch failed");
+      const remote=await r.json();
+      seasonHistory=Array.isArray(remote.games)?remote.games:[];
+      localStorage.setItem(HIST,JSON.stringify(seasonHistory));
+      historyLoadedFromCloud=true;
+      renderHistory();
+    }catch(e){
+      // Keep the local cache if the network is unavailable.
+      renderHistory();
+    }
+  }
+
+  async function saveGameToCloud(game){
+    try{
+      const r=await fetch("/api/history",{
+        method:"POST",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify(game)
+      });
+      if(!r.ok) throw new Error("history save failed");
+      await loadCloudHistory();
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  async function deleteHistoryGame(id){
+    if(!confirm("Delete this game from season history?")) return;
+    try{
+      const r=await fetch("/api/history/"+encodeURIComponent(id),{method:"DELETE"});
+      if(!r.ok) throw new Error("delete failed");
+      await loadCloudHistory();
+    }catch(e){
+      alert("Could not delete that game from cloud history.");
+    }
+  }
+
+  async function deleteAllHistory(){
+    if(!confirm("Delete ALL saved Team 71 game history? This cannot be undone.")) return;
+    try{
+      const r=await fetch("/api/history",{method:"DELETE"});
+      if(!r.ok) throw new Error("delete all failed");
+      seasonHistory=[];
+      localStorage.setItem(HIST,"[]");
+      renderHistory();
+    }catch(e){
+      alert("Could not delete season history.");
+    }
+  }
+
   function randomGameCode(){
     const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let s="T71";
@@ -420,6 +548,11 @@
         headers:{"content-type":"application/json"},
         body:JSON.stringify({state:payload,changedDomains:domains,clientId:CLIENT_ID})
       });
+      if(r.status===409){
+        await cloudPull();
+        setTimeout(()=>cloudPush(domains),150);
+        return;
+      }
       if(!r.ok) throw new Error("sync failed");
       const data=await r.json();
       state.syncVersion=data.syncVersion||state.syncVersion;
@@ -467,7 +600,7 @@
   function startCloudPolling(){
     if(cloudPollHandle)clearInterval(cloudPollHandle);
     if(state.shareCode){
-      cloudPollHandle=setInterval(cloudPull,1200);
+      cloudPollHandle=setInterval(cloudPull,1000);
       cloudPull();
     }
   }
@@ -477,6 +610,8 @@
     state.syncVersion=0;
     save();
     await cloudPush(["all"]);
+    await fetchActiveGame();
+    await loadCloudHistory();
     startCloudPolling();
     renderAll();
   }
@@ -486,6 +621,7 @@
     const role=$("shareRole").value;
     state.shareCode=code;state.shareRole=role;state.syncVersion=0;save();
     await cloudPull();
+    await loadCloudHistory();
     startCloudPolling();
     renderAll();
   }
@@ -857,7 +993,7 @@
     }
 
     save();
-    if(now-lastClockCloudPush>1800){
+    if(now-lastClockCloudPush>4000){
       lastClockCloudPush=now;
       cloudPush(["clock","stats"]);
     }
@@ -907,12 +1043,51 @@
     renderAll();
   }
 
-  function endGame(){if(!guardEdit())return;
-    if(state.ended)return;if(!confirm("End this game and save it to season history?"))return;
-    state.running=false;state.clockStartedAt=null;state.ended=true;
-    const gkQuarters=Object.fromEntries(roster.map(p=>[p,0]));state.goaliePlan.forEach(g=>{if(g)gkQuarters[g]++});
-    seasonHistory.push({date:new Date().toISOString(),opponent:state.opponent,homeAway:state.homeAway,ourScore:state.ourScore,theirScore:state.theirScore,play:state.play,gkQuarters,goals:state.goals,goalLog:state.goalLog});
-    localStorage.setItem(HIST,JSON.stringify(seasonHistory));actionSave(["all"]);renderAll();setStatus("Game saved to season history.");showTab("history")
+  async function endGame(){
+    if(!guardEdit())return;
+    if(state.ended)return;
+    if(!confirm("End this game and save it to season history?"))return;
+
+    state.running=false;
+    state.clockStartedAt=null;
+    state.ended=true;
+
+    const gkQuarters=Object.fromEntries(roster.map(p=>[p,0]));
+    state.goaliePlan.forEach(g=>{if(g)gkQuarters[g]++});
+
+    const game={
+      id:(crypto.randomUUID ? crypto.randomUUID() : ("g_"+Date.now()+"_"+Math.random().toString(36).slice(2))),
+      date:new Date().toISOString(),
+      opponent:state.opponent,
+      homeAway:state.homeAway,
+      ourScore:state.ourScore,
+      theirScore:state.theirScore,
+      play:JSON.parse(JSON.stringify(state.play)),
+      gkQuarters,
+      goals:JSON.parse(JSON.stringify(state.goals)),
+      goalLog:JSON.parse(JSON.stringify(state.goalLog))
+    };
+
+    // Save locally immediately so a network issue never loses the game.
+    seasonHistory.push(game);
+    localStorage.setItem(HIST,JSON.stringify(seasonHistory));
+
+    actionSave(["all"]);
+    renderAll();
+    setStatus("Saving game to season history…");
+
+    const cloudSaved=await saveGameToCloud(game);
+
+    // Mark the shared game no longer active after history has been saved.
+    try{
+      if(state.shareCode){
+        await fetch("/api/active/"+encodeURIComponent(state.shareCode),{method:"DELETE"});
+      }
+    }catch(e){}
+
+    setStatus(cloudSaved ? "Game saved to shared season history." : "Game saved locally; cloud history will need to sync later.");
+    await fetchActiveGame();
+    showTab("history");
   }
 
 
@@ -928,9 +1103,36 @@
   }
 
   function renderHistory(){
-    const h=$("historyList");h.innerHTML=seasonHistory.length?"":"<div class='muted small'>No completed games yet.</div>";
-    [...seasonHistory].reverse().forEach(g=>{const d=document.createElement("div");d.className="history-game";const dt=new Date(g.date);d.innerHTML="<strong>Team 71 "+g.ourScore+" – "+g.theirScore+" "+g.opponent+"</strong><div class='muted small'>"+dt.toLocaleDateString()+" • "+(g.homeAway==="home"?"Home / Red":"Away / Blue")+"</div>";h.append(d)});
-    const s=seasonStats(),tb=$("seasonTotals");tb.innerHTML="";roster.forEach(p=>{const tr=document.createElement("tr");tr.innerHTML="<td>"+p+"</td><td>"+s[p].minutes.toFixed(1).replace(".0","")+"</td><td>"+s[p].gkQ+"</td><td>"+s[p].goals+"</td>";tb.append(tr)})
+    const h=$("historyList");
+    h.innerHTML=seasonHistory.length?"":"<div class='muted small'>No completed games yet.</div>";
+
+    [...seasonHistory].reverse().forEach(g=>{
+      const d=document.createElement("div");
+      d.className="history-game";
+      const dt=new Date(g.date);
+      const left=document.createElement("div");
+      left.innerHTML="<strong>Team 71 "+g.ourScore+" – "+g.theirScore+" "+g.opponent+"</strong>"+
+        "<div class='muted small'>"+dt.toLocaleDateString()+" • "+(g.homeAway==="home"?"Home / Red":"Away / Blue")+"</div>";
+      const del=document.createElement("button");
+      del.className="danger";
+      del.style.minHeight="34px";
+      del.style.padding="5px 8px";
+      del.textContent="Delete";
+      del.onclick=()=>deleteHistoryGame(g.id);
+      const row=document.createElement("div");
+      row.className="row";
+      row.append(left,del);
+      d.append(row);
+      h.append(d);
+    });
+
+    const s=seasonStats(),tb=$("seasonTotals");
+    tb.innerHTML="";
+    roster.forEach(p=>{
+      const tr=document.createElement("tr");
+      tr.innerHTML="<td>"+p+"</td><td>"+s[p].minutes.toFixed(1).replace(".0","")+"</td><td>"+s[p].gkQ+"</td><td>"+s[p].goals+"</td>";
+      tb.append(tr)
+    });
   }
 
   function exportBackup(){
@@ -947,6 +1149,10 @@
   $("exportBtn").onclick=exportBackup;
   $("newGameBtn").onclick=resetGame;
   $("historyNewGameBtn").onclick=resetGame;
+  $("deleteAllHistoryBtn").onclick=deleteAllHistory;
+  $("refreshActiveBtn").onclick=fetchActiveGame;
+  $("joinActiveViewerBtn").onclick=()=>joinActiveGame("viewer");
+  $("joinActiveCoachBtn").onclick=()=>joinActiveGame("coach");
   $("soundToggle").onchange=e=>{state.soundEnabled=!!e.target.checked;unlockAudio();save()};
 
   $("createShareBtn").onclick=()=>{if(!guardEdit())return;createSharedGame()};
@@ -954,8 +1160,8 @@
   $("leaveShareBtn").onclick=leaveSharedGame;
 
 
-  function renderAll(){renderSetup();renderGoaliePlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared()}
-  load();renderAll();startCloudPolling();
+  function renderAll(){renderSetup();renderGoaliePlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
+  load();renderAll();fetchActiveGame();loadCloudHistory();startCloudPolling();
   setInterval(()=>{ if(state.running && state.timerOwnerId!==CLIENT_ID) renderGame(); },250);
 
   if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}

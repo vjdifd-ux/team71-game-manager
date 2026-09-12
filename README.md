@@ -50,3 +50,16 @@ The D1 `game_state` table is created automatically by the Worker on first use.
   - Shared updates are merged by domain (clock/stats, lineup, score, setup)
   - The phone that starts/resumes the clock owns official time accumulation
   - Another Coach can record goals, substitutions, or player status without overwriting the running clock
+
+
+## v10 fixes
+
+- Game history now persists in the shared D1 database, not only one phone's localStorage.
+- History can be deleted one game at a time or cleared completely.
+- Active shared game discovery:
+  - No code required for normal use.
+  - If Team 71 has an active shared game, it automatically appears on Pregame.
+  - Maureen can tap Join as Viewer or Join as Coach.
+- Shared sync polls every second.
+- Live clock/stat writes are less frequent to reduce conflicts.
+- Conflict responses automatically pull the newest state and retry.
