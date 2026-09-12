@@ -33,4 +33,20 @@ The Worker name in `wrangler.json` is already `team71`, matching the Cloudflare 
 
 One phone can create a shared game code. A second phone can join the same code as Coach or Viewer.
 
-The D1 `game_state` table is created automatically by the Worker on first use. 
+The D1 `game_state` table is created automatically by the Worker on first use.
+
+
+## v9 fixes
+
+- New Game / Reset returns the current game to 0:00 while keeping season history.
+- 3-player rotation no longer blindly adds six minutes to the schedule.
+- The countdown now shows the next actual rotation event: the 6-minute sub or the quarter ending.
+- Sound alerts:
+  - 30-second warning before the 6-minute rotation
+  - 3-beep alert at 6:00
+  - 30-second warning before quarter end
+  - long buzzer at 12:00
+- Multiple Coach phones can now be connected concurrently.
+  - Shared updates are merged by domain (clock/stats, lineup, score, setup)
+  - The phone that starts/resumes the clock owns official time accumulation
+  - Another Coach can record goals, substitutions, or player status without overwriting the running clock

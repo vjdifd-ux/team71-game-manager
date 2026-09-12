@@ -39,3 +39,14 @@ The D1 binding is already declared in wrangler.json:
 binding: DB
 database_name: team71-game-state
 database_id: d2545cc6-6d5f-4ac3-b75b-a38ddac63d89
+
+
+V9 UPDATE
+Replace the files in GitHub with the v9 package contents and commit to main.
+Cloudflare will automatically rebuild from the GitHub commit.
+
+Key v9 fixes:
+- Reset/New Game
+- Correct rotation countdown
+- Sound warnings and quarter buzzer
+- Safer two-coach simultaneous updates
