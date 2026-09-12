@@ -89,7 +89,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v18 NEXT QUARTER</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v19 GOALIE AUTHORITATIVE</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -323,6 +323,7 @@
   let lastAlertKey="";
   let activeGameCache=null;
   let historyLoadedFromCloud=false;
+  let goalieDraft=null;
   let auditEntries=[];
   let auditPollHandle=null;
   let activePollHandle=null;
@@ -454,6 +455,7 @@
     }catch(e){}
 
     state=fresh();
+    goalieDraft=["","","",""];
     state.gkPref=keepGkPref;
     state.goaliePlan=["","","",""];
     state.lineup={GK:null,LB:null,RB:null,M:null,F:null};
@@ -894,6 +896,7 @@
           lastTick:state.lastTick
         } : null;
         state={...fresh(),...remote,...localShare,lastTick:null};
+        if(!goalieDraft || state.planBuilt) goalieDraft=[...(state.goaliePlan||["","","",""])];
         if(localClock){
           Object.assign(state,localClock);
         }else if(state.running){
@@ -1000,6 +1003,7 @@
 
   function renderGoaliePlanner(){
     const box=$("goaliePlanner");
+    if(!goalieDraft) goalieDraft=[...(state.goaliePlan||["","","",""])];
     if(!box)return;
     box.innerHTML="";
     for(let q=0;q<4;q++){
@@ -1010,21 +1014,18 @@
       const blank=document.createElement("option");blank.value="";blank.textContent="Choose goalie";sel.append(blank);
       activePool().filter(p=>state.gkPref[p]!=="no").forEach(p=>{
         const o=document.createElement("option");o.value=p;o.textContent=p;
-        if(state.goaliePlan[q]===p)o.selected=true;
+        if(goalieDraft[q]===p)o.selected=true;
         sel.append(o);
       });
       sel.disabled=!canEdit();
       sel.onchange=()=>{
         if(!guardEdit())return;
         pushUndo("goalie plan");
-        state.goaliePlan[q]=sel.value;
+        goalieDraft[q]=sel.value;
 
-        // Pregame goalie planning is intentionally local until Build Game Plan.
-        // This avoids an older cloud response reverting a coach's most recent
-        // dropdown choice while several quarters are being selected quickly.
-        save();
+        // Keep the visible goalie draft completely separate from shared live
+        // state until Build Game Plan commits the four-quarter plan atomically.
         renderGoaliePlanner();
-        renderSetup();
       };
       card.append(tag,sel);box.append(card);
     }
@@ -1048,6 +1049,7 @@
       return;
     }
     pushUndo("clear goalie plan");
+    goalieDraft=["","","",""];
     state.goaliePlan=["","","",""];
     if(state.elapsed===0){
       state.lineup.GK=null;
@@ -1059,11 +1061,46 @@
   }
 
   function readGoaliePlannerSelections(){
-    const cards=[...document.querySelectorAll("#goaliePlanner .goalie-q")];
-    return [0,1,2,3].map(q=>{
-      const sel=cards[q]?.querySelector("select");
-      return sel ? sel.value : (state.goaliePlan[q]||"");
-    });
+    if(goalieDraft) return [...goalieDraft];
+    return [...(state.goaliePlan||["","","",""])];
+  }
+
+  async function commitGamePlanAuthoritatively(){
+    if(!state.shareCode || state.shareRole==="viewer"){
+      save();
+      return true;
+    }
+
+    try{
+      const r=await fetch("/api/plan/"+encodeURIComponent(state.shareCode),{
+        method:"PUT",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({
+          goaliePlan:state.goaliePlan,
+          lineup:state.lineup,
+          planBuilt:state.planBuilt,
+          nextSubAt:state.nextSubAt,
+          subDone:state.subDone,
+          opponent:state.opponent,
+          homeAway:state.homeAway,
+          present:state.present,
+          availability:state.availability,
+          gkPref:state.gkPref
+        })
+      });
+      if(!r.ok) throw new Error("plan commit failed");
+      const canonical=await r.json();
+
+      const localShare={shareCode:state.shareCode,shareRole:state.shareRole};
+      state={...fresh(),...canonical,...localShare,lastTick:null};
+      goalieDraft=[...(state.goaliePlan||["","","",""])];
+      save();
+      setSyncStatus("live","Shared • plan synced");
+      return true;
+    }catch(e){
+      setSyncStatus("err","Shared • plan sync error");
+      return false;
+    }
   }
 
   async function buildPlan(){
@@ -1109,10 +1146,20 @@
     state.subDone=[false,false,false,false];
     state.nextSubAt=SUBINT;
 
-    // Save locally first, then wait for the shared-state merge before showing
-    // the field. This keeps both coaches on the same goalie/lineup snapshot.
+    goalieDraft=[...state.goaliePlan];
     save();
-    await cloudPush(["setup","lineup"]);
+
+    const committed=await commitGamePlanAuthoritatively();
+    if(!committed){
+      alert("The goalie/lineup plan could not be saved to the shared game. Please check Connection Test and try Build Game Plan again.");
+      return;
+    }
+
+    // Hard invariant after authoritative server commit.
+    state.lineup.GK=state.goaliePlan[0];
+    goalieDraft=[...state.goaliePlan];
+    save();
+
     renderAll();
     showTab("game");
     addAudit("Game plan built","Q1 GK "+state.lineup.GK+" • vs "+state.opponent);
@@ -1127,8 +1174,9 @@
     $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+" of 4</strong>"+
       (atQuarterStart ? " <span class='pill'>Lineup ready — press Start when positioned</span>" : "");
 
-    if(state.quarter===0 && state.elapsed===0 && state.goaliePlan[0] && state.lineup.GK!==state.goaliePlan[0]){
+    if(state.planBuilt && state.quarter===0 && state.elapsed===0 && state.goaliePlan[0] && state.lineup.GK!==state.goaliePlan[0]){
       state.lineup.GK=state.goaliePlan[0];
+      save();
     }
     $("timer").textContent=fmt(displayElapsed());
     $("startPauseBtn").textContent=state.awaitingQuarterTransition ? "Start Next Quarter" : (state.running?"Pause":(state.elapsed?"Resume":"Start"));

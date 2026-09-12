@@ -159,6 +159,58 @@ export default {
       return json({error:"Method not allowed"},405);
     }
 
+
+    // AUTHORITATIVE GAME PLAN COMMIT
+    // Pregame goalie/lineup configuration is committed in one D1 update so
+    // generic polling/merge traffic cannot split goaliePlan from lineup.
+    if (url.pathname.startsWith("/api/plan/") && request.method === "PUT") {
+      const code=url.pathname.split("/").pop().toUpperCase();
+      if (!/^[A-Z0-9]{4,10}$/.test(code)) return json({error:"Invalid game code"},400);
+
+      let body;
+      try{body=await request.json()}catch{return json({error:"Invalid JSON"},400)}
+
+      const row=await env.DB.prepare(
+        "SELECT state, version FROM game_state WHERE code=?"
+      ).bind(code).first();
+
+      if(!row) return json({error:"Game not found"},404);
+
+      const current=JSON.parse(row.state);
+      const merged={
+        ...current,
+        opponent:body.opponent ?? current.opponent,
+        homeAway:body.homeAway ?? current.homeAway,
+        present:body.present ?? current.present,
+        availability:body.availability ?? current.availability,
+        gkPref:body.gkPref ?? current.gkPref,
+        goaliePlan:Array.isArray(body.goaliePlan)?body.goaliePlan:current.goaliePlan,
+        lineup:body.lineup ?? current.lineup,
+        planBuilt:body.planBuilt ?? true,
+        nextSubAt:body.nextSubAt ?? current.nextSubAt,
+        subDone:Array.isArray(body.subDone)?body.subDone:current.subDone
+      };
+
+      // Enforce the central invariant server-side too.
+      if(merged.goaliePlan?.[0] && merged.lineup){
+        merged.lineup.GK=merged.goaliePlan[0];
+      }
+
+      const nextVersion=Number(row.version||0)+1;
+      const now=Date.now();
+      merged.syncVersion=nextVersion;
+      merged.lastCloudUpdate=now;
+      delete merged.shareRole;
+
+      await env.DB.prepare(`
+        UPDATE game_state
+        SET state=?, version=?, updated_at=?
+        WHERE code=?
+      `).bind(JSON.stringify(merged),nextVersion,now,code).run();
+
+      return json(merged,200,{"cache-control":"no-store"});
+    }
+
     // LIVE GAME
     if (url.pathname.startsWith("/api/game/")) {
       const code = url.pathname.split("/").pop().toUpperCase();
