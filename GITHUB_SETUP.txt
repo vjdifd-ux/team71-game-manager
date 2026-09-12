@@ -1,0 +1,41 @@
+GITHUB WEB UPLOAD - NO TERMINAL REQUIRED
+
+1. Go to https://github.com and sign in.
+2. Click New repository.
+3. Repository name: team71-game-manager
+4. Choose Private or Public. Private is fine.
+5. Create repository WITHOUT adding a README, .gitignore, or license.
+6. On the empty repository page, choose "uploading an existing file".
+7. Extract the Team71_GitHub_Ready.zip on your computer.
+8. Drag ALL extracted files and folders into GitHub:
+   - public/
+   - src/
+   - .gitignore
+   - package.json
+   - README.md
+   - wrangler.json
+9. Commit directly to the main branch.
+
+CONNECT EXISTING CLOUDFLARE WORKER
+
+1. Open Cloudflare > Workers & Pages > team71.
+2. Go to Settings > Builds.
+3. Click Connect.
+4. Authorize GitHub if asked.
+5. Select repository: team71-game-manager.
+6. Production branch: main.
+7. Root directory: leave blank.
+8. Build command: leave blank.
+9. Deploy command: npx wrangler deploy
+10. Save / connect.
+
+Cloudflare should then build and deploy the repository to the EXISTING worker:
+https://team71.vjdifd.workers.dev/
+
+IMPORTANT
+The Worker name in wrangler.json is already "team71". Cloudflare requires that to match the existing Worker name.
+
+The D1 binding is already declared in wrangler.json:
+binding: DB
+database_name: team71-game-state
+database_id: d2545cc6-6d5f-4ac3-b75b-a38ddac63d89

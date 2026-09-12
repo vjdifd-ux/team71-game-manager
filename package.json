@@ -1,0 +1,12 @@
+{
+  "name": "team71-game-manager",
+  "private": true,
+  "version": "8.1.0",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

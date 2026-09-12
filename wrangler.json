@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "team71",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-11",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "team71-game-state",
+      "database_id": "d2545cc6-6d5f-4ac3-b75b-a38ddac63d89"
+    }
+  ]
+}
