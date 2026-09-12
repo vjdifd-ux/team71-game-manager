@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v22 STABLE
+# Team 71 Game Manager — v23 ROTATION
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,18 +8,19 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v22:** see [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v23:** see [`V23_ROTATION.md`](V23_ROTATION.md)
+- **v22 fixes:** see [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v22 STABLE
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v23 ROTATION
 ```
 
-Worth a glance before every game. If it does not say `v22 STABLE`, the deploy did
-not land and you are running older code.
+Worth a glance before every game. If it does not say `v23 ROTATION`, the deploy
+did not land and you are running older code.
 
 ---
 
@@ -30,8 +31,9 @@ not land and you are running older code.
 1. Set the opponent and home/away.
 2. Set attendance and availability for each girl, plus whether she can play
    goalie. Marking someone Out here does the same thing as marking her Out during
-   the game: she comes off the field, her minutes stop, and any quarter where she
-   was the planned goalie is reassigned.
+   the game: she comes off the field, her minutes stop, any quarter where she
+   was the planned goalie is reassigned, and — if the game is already
+   underway — you're asked who from the bench should take her spot.
 3. Pick a goalie for each of the four quarters, or leave some blank.
 4. **Build Game Plan** — your manual choices are kept, blanks are filled in from
    season goalie minutes, and the starting five is chosen by lowest season
@@ -54,10 +56,17 @@ not land and you are running older code.
 - The big timer is the **quarter** clock, resetting to 0:00 each quarter. Total
   game time is underneath.
 - The clock stops only when you tap Pause, when a quarter ends, or when you tap
-  End Period. The 6:00 mark is a reminder, never a forced stop.
-- At 6:00 you get a suggested one-for-one swap: the bench player with the fewest
-  minutes for the field player with the most, recalculated after each swap. Take
-  it when play allows, ignore it, or dismiss it.
+  End Period. The 6:00 mark is a reminder, never a forced stop — the reminder
+  card starts flashing once you're past it and the rotation still isn't done.
+- **Sub In Whole Bench** brings every bench player on at once — fewest minutes
+  in, most minutes out, one for one — whenever you tap it. It's a suggestion,
+  never automatic: the clock keeps running and you make the swap when play
+  allows.
+- A player who comes off mid-rotation for an emergency (hurt, doesn't want to
+  play right now) doesn't get auto-subbed back in the moment you flip her back
+  to Available. Whoever covered for her keeps that spot until the current
+  rotation and the covering player's own next one are both done, so she isn't
+  yanked straight back out. A manual sub always overrides this.
 - To sub by hand: tap a sideline player, then tap any field position, including
   goalie. Substitutions never move the game clock.
 - **End Period / Set Up Next Quarter** deliberately ends the period, moves the

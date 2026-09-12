@@ -57,6 +57,12 @@
     .notice{background:#172554;color:#dbeafe;border-radius:12px;padding:10px 12px;margin-top:10px}
     .nextsub{background:#052e16;border:1px solid #166534;border-radius:14px;padding:12px}
     .nextsub strong{font-size:1.05rem}
+    .nextsub.due{animation:dueFlash 1.1s ease-in-out infinite}
+    .pill.due{background:#7c2d12;color:#fed7aa}
+    @keyframes dueFlash{0%,100%{background:#052e16;border-color:#166534}50%{background:#7c2d12;border-color:#f97316}}
+    @media (prefers-reduced-motion:reduce){.nextsub.due{animation:none;background:#7c2d12;border-color:#f97316}}
+    .replace-options{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+    .replace-btn{display:flex;justify-content:space-between;gap:8px;text-align:left}
 
     .field-stage{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:12px;align-items:start;margin-top:10px}
     @media(max-width:900px){.field-stage{grid-template-columns:1fr}}
@@ -89,7 +95,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v22 STABLE</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v23 ROTATION</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -208,9 +214,9 @@
         <div class="card">
           <div id="nextSubBox" class="nextsub">
             <div class="row"><strong id="nextEventLabel">Next Rotation</strong><span id="subCountdown" class="pill">6:00</span></div>
-            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">At 6:00 you get a reminder only. The clock keeps running. Use the suggested 1-for-1 swap when play allows, or make any manual sub.</div>
+            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">At 6:00 the reminder starts flashing. The clock keeps running. Sub the whole bench in at once when you're ready, or make any manual sub instead.</div>
             <div class="controls" style="margin-top:8px">
-              <button id="acceptSubBtn" class="good">Make Suggested Swap</button>
+              <button id="acceptSubBtn" class="good">Sub In Whole Bench</button>
               <button id="changeSubBtn">Change Suggestion</button>
               <button id="skipSubBtn">Dismiss Reminder</button>
             </div>
@@ -252,7 +258,7 @@
       <aside>
         <div class="card">
           <strong>Substitution Help</strong>
-          <div class="muted small" style="margin:4px 0 10px">Tap a sideline player, then tap any field position — including goalie. Subs never move the game clock. The 6:00 reminder suggests one swap at a time: the bench player with the fewest minutes for the field player with the most.</div>
+          <div class="muted small" style="margin:4px 0 10px">Tap a sideline player, then tap any field position — including goalie. Subs never move the game clock. At 6:00 the reminder starts flashing and stays available all quarter: "Sub In Whole Bench" swaps every bench player on at once (fewest minutes in, most minutes out), one tap, whenever you're ready.</div>
         </div>
 
         <div class="card">
@@ -301,6 +307,15 @@
     <h2 style="margin-top:0">Quarter Complete</h2>
     <div id="quarterTransition"></div>
     <div class="controls" style="margin-top:14px"><button class="primary" id="startNextQuarterBtn">Set Up This Quarter Lineup</button><button id="closeQuarterBtn">Not Yet</button></div>
+  </div>
+</div>
+
+<div class="modal" id="replaceModal">
+  <div class="modal-card">
+    <h2 style="margin-top:0" id="replaceTitle">Who's going in?</h2>
+    <div class="muted small" id="replaceSubtitle"></div>
+    <div class="replace-options" id="replaceOptions"></div>
+    <div class="controls" style="margin-top:14px"><button id="replaceLaterBtn">Leave It Empty For Now</button></div>
   </div>
 </div>
 
@@ -357,7 +372,8 @@
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,
       shareCode:"", lastAuditCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
-      timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, testSpeed:1, soundEnabled:true
+      timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, testSpeed:1, soundEnabled:true,
+      coverLocks:{}
     };
   }
   function $(id){return document.getElementById(id)}
@@ -372,6 +388,7 @@
       if(!state.gameId) state.gameId="g_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2);
       if(state.clockAnchorElapsed==null) state.clockAnchorElapsed=Number(state.elapsed||0);
       if(state.awaitingQuarterTransition==null) state.awaitingQuarterTransition=false;
+      if(!state.coverLocks || typeof state.coverLocks!=="object") state.coverLocks={};
       delete state.lastTick;
 
       // v22: reopening the app with a stale running clock (phone closed, or the
@@ -1040,6 +1057,36 @@
   function activePool(){return roster.filter(p=>state.present[p]&&state.availability[p]==="available")}
   function onField(){return slots.map(s=>state.lineup[s]).filter(Boolean)}
   function bench(){const set=new Set(onField());return activePool().filter(p=>!set.has(p))}
+
+  /**
+   * A player who just came off for an emergency reason (injury, "doesn't want
+   * to play right now") is covered by whoever came in for her. That covering
+   * player owes the rotation two turns — the one she covered plus her own
+   * next one — before the fairness engine will pull her back out, and the
+   * player she covered for stays out of the automatic incoming pool until
+   * then, even once the coach flips her back to Available. Either side is
+   * always still available for a manual sub; this only gates the automatic
+   * "who's due" suggestions.
+   */
+  function activeCoverLocks(){
+    const locks=state.coverLocks||{};
+    return Object.entries(locks).filter(([,l])=>l && l.rotationsLeft>0);
+  }
+  function benchForFairness(){
+    const covered=new Set(activeCoverLocks().map(([,l])=>l.for));
+    return bench().filter(p=>!covered.has(p));
+  }
+  function isCoveringPlayer(p){
+    return activeCoverLocks().some(([sub])=>sub===p);
+  }
+  function decrementCoverLocks(){
+    const locks=state.coverLocks;
+    if(!locks) return;
+    for(const key of Object.keys(locks)){
+      locks[key].rotationsLeft-=1;
+      if(locks[key].rotationsLeft<=0) delete locks[key];
+    }
+  }
   function short(n){if(!n)return"Empty";const a=n.split(" ");return a[0]+" "+(a[1]?a[1][0]+".":"")}
   /**
    * Fields Undo must never restore.
@@ -1330,11 +1377,13 @@
       targets.forEach(box=>box.innerHTML='<div class="muted small">No active bench players.</div>');
       return;
     }
+    const covered=Object.fromEntries(activeCoverLocks().map(([sub,l])=>[l.for,sub]));
     list.forEach(p=>{
       targets.forEach(box=>{
         const b=document.createElement("button");
         b.className="bench-btn"+(state.selectedBench===p?" selected":"");
-        b.innerHTML='<span>'+p+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
+        const waiting=covered[p] ? " <span class='pill'>waiting on "+short(covered[p])+"</span>" : "";
+        b.innerHTML='<span>'+p+waiting+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
         b.disabled=!canEdit();b.onclick=()=>{if(!guardEdit())return;state.selectedBench=state.selectedBench===p?null:p;renderBench()};
         box.append(b);
       });
@@ -1343,9 +1392,12 @@
 
   function renderStatusPlayers(){
     const box=$("statusPlayers");box.innerHTML="";
+    const covering=Object.fromEntries(activeCoverLocks().map(([sub,l])=>[sub,l]));
     roster.filter(p=>state.present[p]).forEach(p=>{
       const d=document.createElement("div");d.className="row";d.style.padding="6px 0";d.style.borderBottom="1px solid var(--line)";
-      const left=document.createElement("span");left.innerHTML='<span class="small">'+p+'</span>';
+      const left=document.createElement("span");
+      const note=covering[p] ? " <span class='muted small'>· covering for "+short(covering[p].for)+"</span>" : "";
+      left.innerHTML='<span class="small">'+p+'</span>'+note;
       const controls=document.createElement("div");controls.className="controls";
       [["Available","available"],["Rest","rest"],["Out","out"]].forEach(([t,v])=>{const b=document.createElement("button");b.textContent=t;b.style.minHeight="34px";b.style.padding="5px 8px";if(state.availability[p]===v)b.className=v==="out"?"danger":v==="rest"?"warn":"good";b.disabled=!canEdit();b.onclick=()=>setAvailability(p,v);controls.append(b)});
       d.append(left,controls);box.append(d);
@@ -1375,6 +1427,7 @@
     state.availability[p]=v;
     state.suggestedSub=null;
 
+    let vacatedSlot=null;
     const usable=state.present[p] && v==="available";
     if(!usable){
       // Only re-plan quarters that have not been played yet.
@@ -1386,7 +1439,7 @@
       if(slot){
         settleClock();          // bank her minutes up to this instant first
         state.lineup[slot]=null;
-        autoReplaceEmpty(slot);
+        vacatedSlot=slot;
       }
       if(state.selectedBench===p) state.selectedBench=null;
     }
@@ -1396,6 +1449,11 @@
     renderAll();
     addAudit("Player status",p+" → "+label);
     setStatus(p+" marked "+label+".");
+
+    // v23: an emergency vacancy no longer auto-picks who comes in — the coach
+    // sees the bench, sorted by fewest minutes, and taps who's going in, or
+    // leaves the slot empty and subs manually later. See openReplacementPicker.
+    if(vacatedSlot) openReplacementPicker(vacatedSlot,p);
   }
 
   function pickReplacementGoalie(q,exclude){
@@ -1406,10 +1464,59 @@
       state.gk[a]-state.gk[b]
     )[0];
   }
-  function autoReplaceEmpty(slot){
-    const b=bench().sort((a,b)=>state.play[a]-state.play[b]); if(!b.length)return;
-    if(slot==="GK"){const g=state.goaliePlan[state.quarter];if(g&&activePool().includes(g)){state.lineup.GK=g;return}}
-    state.lineup[slot]=b[0];
+
+  /**
+   * v23: replaces the old silent auto-pick. When a field player is pulled off
+   * because she's marked Rest or Out mid-game, the coach chooses who comes in
+   * from the bench (sorted by fewest minutes, same order the old auto-pick
+   * used) instead of the app deciding for her. Confirming a choice here marks
+   * the incoming player as "covering" for the one who left — see
+   * confirmReplacement and activeCoverLocks().
+   */
+  function openReplacementPicker(slot,outgoingPlayer){
+    const options=bench().sort((a,b)=>state.play[a]-state.play[b]);
+    const box=$("replaceOptions");
+    box.innerHTML="";
+    $("replaceTitle").textContent=outgoingPlayer+" is coming off "+posNames[slot]+" — who's going in?";
+    $("replaceSubtitle").textContent=options.length
+      ? "Sorted by fewest minutes played."
+      : "Nobody is available on the bench right now — "+posNames[slot]+" will stay empty until you sub someone in manually.";
+
+    options.forEach((cand,i)=>{
+      const btn=document.createElement("button");
+      btn.className="replace-btn"+(i===0?" good":"");
+      btn.dataset.name=cand;
+      btn.innerHTML="<span>"+cand+(i===0?" <span class='pill'>fewest minutes</span>":"")+"</span><span class='pill'>"+minfmt(state.play[cand])+" min</span>";
+      btn.onclick=()=>confirmReplacement(slot,outgoingPlayer,cand);
+      box.append(btn);
+    });
+
+    $("replaceModal").classList.add("show");
+  }
+
+  function confirmReplacement(slot,outgoingPlayer,incoming){
+    if(!guardEdit())return;
+
+    // The slot may have sat empty for a few seconds while the coach decided;
+    // settle minutes for everyone else on the field up to right now first.
+    const wasRunning=settleClock();
+
+    pushUndo("choose replacement");
+    state.lineup[slot]=incoming;
+
+    // She's covering for an emergency departure: the fairness engine leaves
+    // her on the field and leaves the player she covered for out of the
+    // automatic incoming pool until two rotation checkpoints have passed —
+    // the one she's covering, plus her own next one. A manual sub always
+    // overrides this; it only gates the automatic suggestions.
+    state.coverLocks=state.coverLocks||{};
+    state.coverLocks[incoming]={for:outgoingPlayer,rotationsLeft:2};
+
+    $("replaceModal").classList.remove("show");
+    actionSave(wasRunning ? ["lineup","setup","clock","stats"] : ["lineup","setup"]);
+    addAudit("Player status",incoming+" IN for "+outgoingPlayer+" ("+posNames[slot]+")");
+    renderAll();
+    setStatus(incoming+" is now in for "+outgoingPlayer+".");
   }
 
   function makeManualSub(incoming,slot){
@@ -1442,10 +1549,11 @@
   }
 
   function suggestSub(force=false){
-    const b=bench().sort((a,b)=>state.play[a]-state.play[b]);
+    const b=benchForFairness().sort((a,b)=>state.play[a]-state.play[b]);
     const fieldSlots=["LB","RB","M","F"]
       .map(s=>({slot:s,p:state.lineup[s]}))
-      .filter(x=>x.p);
+      .filter(x=>x.p && !isCoveringPlayer(x.p))
+      .sort((a,b)=>state.play[b.p]-state.play[a.p]);
 
     if(!b.length || !fieldSlots.length){
       state.suggestedSub=null;
@@ -1453,17 +1561,21 @@
     }
     if(!force && state.suggestedSub) return;
 
-    // Game-day fairness: recommend ONE clear swap at a time.
-    // Lowest-minutes bench player comes in for highest-minutes field player.
-    // Recalculate after every substitution, so the coach can make 1, 2, or 3
-    // swaps whenever play actually allows.
-    const incoming=b[0];
-    const outgoing=[...fieldSlots].sort((a,b)=>state.play[b.p]-state.play[a.p])[0];
+    // Game-day fairness: bring the whole bench on at once. Lowest-minutes
+    // bench players come in for the highest-minutes field players, one for
+    // one, as many pairs as the smaller side allows. Recalculate after every
+    // substitution, so the next suggestion always reflects who is actually
+    // out there. A player currently "covering" for someone who came off
+    // injured/resting mid-rotation is left on the field here, and the player
+    // she is covering for is left off the bench — see activeCoverLocks().
+    const n=Math.min(b.length,fieldSlots.length);
+    const incoming=b.slice(0,n);
+    const outgoing=fieldSlots.slice(0,n);
 
     state.suggestedSub={
-      incoming:[incoming],
-      outgoingPlayers:[outgoing.p],
-      outgoingSlots:[outgoing.slot]
+      incoming,
+      outgoingPlayers:outgoing.map(x=>x.p),
+      outgoingSlots:outgoing.map(x=>x.slot)
     };
   }
 
@@ -1472,26 +1584,34 @@
    * to the quarter boundary. The countdown and the suggestion are independent:
    * one says how long until the next whistle, the other says who to swap. A
    * suggested swap stays available for the whole quarter.
+   *
+   * v23: the reminder now flashes once the 6:00 mark passes and the quarter's
+   * rotation still is not done, and the suggestion brings the whole bench on
+   * in one tap instead of one pair at a time.
    */
   function renderSubSuggestion(){
     const event=nextRotationEvent();
+    const due=event.type==="quarter" && !state.subDone[Math.min(3,state.quarter)] && !state.ended;
     $("subCountdown").textContent=fmt(Math.max(0,event.at-displayElapsed()));
     $("nextEventLabel").textContent=event.label;
+    $("subCountdown").classList.toggle("due",due);
+    $("nextSubBox").classList.toggle("due",due && bench().length>0);
     suggestSub(false);
 
     const btn=$("acceptSubBtn");
-    btn.textContent="Make Suggested Swap";
 
     if(state.ended || !state.suggestedSub){
       $("subSuggestion").textContent=bench().length
         ? "No substitution needed right now."
         : "Nobody on the bench — no swap available.";
+      btn.textContent="Sub In Whole Bench";
       btn.disabled=true;
       return;
     }
 
     const s=state.suggestedSub;
     const pairs=s.incoming.map((p,i)=>p+" IN → "+s.outgoingPlayers[i]+" OUT");
+    btn.textContent=s.incoming.length>1 ? "Sub In Whole Bench ("+s.incoming.length+")" : "Make Sub";
     $("subSuggestion").innerHTML=
       "<strong>Suggested swap</strong><br>"+pairs.join("<br>")+
       "<br><span class='muted small'>Clock keeps running. Make this swap only when play allows.</span>";
@@ -1515,9 +1635,12 @@
 
     const desc=s.incoming.map((p,i)=>p+" for "+s.outgoingPlayers[i]).join(", ");
     state.suggestedSub=null;
-    // Do not mark the quarter's substitution work complete. The coach may
-    // make additional one-for-one swaps later as needed.
+    // v23: this now brings the whole bench on at once, so it completes the
+    // quarter's scheduled rotation rather than leaving it open for more
+    // one-for-one swaps.
+    state.subDone[Math.min(3,state.quarter)]=true;
     state.nextSubAt=currentQuarterBoundary();
+    decrementCoverLocks();
 
     // Work out the NEXT recommended swap before saving, so the fresh suggestion
     // is what gets persisted and shared. Previously the save ran first and both
@@ -1543,6 +1666,7 @@
     state.subDone[state.quarter]=true;
     state.suggestedSub=null;
     state.nextSubAt=currentQuarterBoundary();
+    decrementCoverLocks();
     actionSave(["lineup"]);
     addAudit("Rotation skipped","Marked scheduled rotation complete");
     renderAll();
@@ -1752,6 +1876,7 @@
       state.clockAnchorElapsed=state.elapsed;
       releaseWakeLock();
       playPeriodBuzzer();
+      decrementCoverLocks();
 
       if(q<3){
         const targetQuarter=q+1;
@@ -1856,6 +1981,7 @@
     }
 
     pushUndo("quarter transition");
+    decrementCoverLocks();
     state.quarter=targetQuarter;
     state.awaitingQuarterTransition=false;
     state.elapsed=targetQuarter*QLEN;
@@ -1916,6 +2042,7 @@
     }
 
     pushUndo("move to next quarter");
+    decrementCoverLocks();
     state.running=false;
     state.clockStartedAt=null;
     state.timerOwnerId="";
@@ -2086,6 +2213,7 @@
   $("clearGoaliesBtn").onclick=clearGoaliePlan;$("startPauseBtn").onclick=startPause;$("nextQuarterBtn").onclick=nextQuarter;$("endGameBtn").onclick=endGame;$("undoBtn").onclick=undo;
   $("acceptSubBtn").onclick=acceptSuggestedSub;$("changeSubBtn").onclick=()=>{state.suggestedSub=null;suggestSub(true);actionSave(["lineup"]);renderSubSuggestion()};$("skipSubBtn").onclick=skipScheduledSub;
   $("oppGoalBtn").onclick=oppGoal;$("undoGoalBtn").onclick=undoLastGoal;$("startNextQuarterBtn").onclick=startNextQuarter;$("closeQuarterBtn").onclick=()=>$("quarterModal").classList.remove("show");
+  $("replaceLaterBtn").onclick=()=>$("replaceModal").classList.remove("show");
   $("exportBtn").onclick=exportBackup;
   $("newGameBtn").onclick=resetGame;
   $("historyNewGameBtn").onclick=resetGame;

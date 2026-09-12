@@ -46,7 +46,7 @@ const AUDIT_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 /** Domains the app can patch independently, so two phones don't clobber each other. */
 const DOMAIN_FIELDS = {
   setup:  ["opponent", "homeAway", "present", "availability", "gkPref", "goaliePlan", "planBuilt"],
-  lineup: ["lineup", "selectedBench", "suggestedSub", "nextSubAt", "subDone"],
+  lineup: ["lineup", "selectedBench", "suggestedSub", "nextSubAt", "subDone", "coverLocks"],
   score:  ["goals", "ourScore", "theirScore", "goalLog"],
   clock:  ["elapsed", "quarter", "running", "ended", "timerOwnerId", "clockStartedAt",
            "clockAnchorElapsed", "awaitingQuarterTransition", "testSpeed"],

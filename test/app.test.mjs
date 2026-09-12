@@ -154,18 +154,26 @@ test("a mid-quarter goalie change moves GK minutes across without touching the c
   app.close();
 });
 
-test("the 6:00 reminder appears and the clock keeps running through it", async () => {
+test("REGRESSION: the suggested swap brings the whole bench on at once", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
   await run(app, 400);                        // past the 6:00 mark
   const s = app.state();
   assert.equal(s.running, true, "the reminder must never stop the clock");
   assert.ok(s.suggestedSub, "a swap should be suggested");
-  assert.equal(s.suggestedSub.incoming.length, 1, "one-for-one, not a forced batch of three");
+  assert.equal(s.suggestedSub.incoming.length, 3, "v20's one-for-one is gone: the whole bench comes in");
   app.close();
 });
 
-test("the suggested swap is the lowest-minutes bench player for the highest-minutes field player", async () => {
+test("the shipped v21 build only suggested one swap at a time", async () => {
+  const app = await readyGame({ html: V21_HTML });
+  await app.click("startPauseBtn");
+  await run(app, 400);
+  assert.equal(app.state().suggestedSub.incoming.length, 1, "documents the old behaviour");
+  app.close();
+});
+
+test("the suggested swap pairs fewest-minutes bench with most-minutes field, one for one", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
   await run(app, 400);
@@ -173,23 +181,40 @@ test("the suggested swap is the lowest-minutes bench player for the highest-minu
   const bench = ["Shalom Amaya", "Olivia Carpenter", "Norah Dineen", "Kennedy Kozlosky",
                  "Juliette Maglio", "Luna Scrivano", "Serafina Sinagra", "Aria Stagnitta"]
     .filter((p) => !app.onField().includes(p));
-  assert.ok(bench.includes(s.suggestedSub.incoming[0]));
-  assert.ok(app.onField().includes(s.suggestedSub.outgoingPlayers[0]));
+  for (const p of s.suggestedSub.incoming) assert.ok(bench.includes(p));
+  for (const p of s.suggestedSub.outgoingPlayers) assert.ok(app.onField().includes(p));
+  assert.equal(new Set(s.suggestedSub.incoming).size, s.suggestedSub.incoming.length, "no repeats");
   app.close();
 });
 
-test("accepting the suggested swap keeps the clock running and re-suggests the next one", async () => {
+test("accepting the suggested swap keeps the clock running, completes the rotation, and re-suggests", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
   await run(app, 400);
-  const incoming = app.state().suggestedSub.incoming[0];
+  const incoming = [...app.state().suggestedSub.incoming];
 
   await app.click("acceptSubBtn");
   const s = app.state();
-  assert.ok(app.onField().includes(incoming));
+  for (const p of incoming) assert.ok(app.onField().includes(p));
   assert.equal(s.running, true);
   assert.equal(Math.round(s.elapsed), 400, "an early sub must not move the clock");
+  assert.equal(s.subDone[0], true, "a whole-bench swap completes the quarter's rotation");
   assert.ok(s.suggestedSub, "a fresh suggestion should be ready for the next stoppage");
+  app.close();
+});
+
+test("the reminder starts flashing once 6:00 passes and stops once the sub is made", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+  assert.equal(app.$("nextSubBox").classList.contains("due"), false, "not due yet");
+
+  await run(app, 300);                        // past the 6:00 mark
+  assert.equal(app.$("nextSubBox").classList.contains("due"), true);
+  assert.equal(app.$("subCountdown").classList.contains("due"), true);
+
+  await app.click("acceptSubBtn");
+  assert.equal(app.$("nextSubBox").classList.contains("due"), false, "clears once the rotation is done");
   app.close();
 });
 
@@ -225,11 +250,101 @@ test("REGRESSION: marking a field player Out from the Pregame tab pulls her off 
 
   const s = app.state();
   assert.ok(!app.onField().includes(victim), victim + " should be off the field");
-  assert.equal(app.onField().filter(Boolean).length, 5, "a bench player should have come in");
   assert.equal(Math.round(s.play[victim]), 120, "her minutes are banked at the moment she left");
+
+  // v23: the spot is not auto-filled — the coach is asked who's coming in.
+  assert.ok(app.replaceModalOpen(), "a replacement picker should open");
+  assert.equal(app.onField().filter(Boolean).length, 4, "the slot stays empty until the coach picks");
+  await app.confirmReplacement(app.replaceOptions()[0]);
+  assert.equal(app.onField().filter(Boolean).length, 5, "a bench player is now on the field");
+  assert.ok(!app.replaceModalOpen());
 
   await run(app, 120);
   assert.equal(Math.round(app.state().play[victim]), 120, "and stop growing");
+  app.close();
+});
+
+test("REGRESSION: marking a field player Out mid-game opens a picker instead of auto-filling", async () => {
+  const app = await readyGame({ html: V21_HTML });
+  await app.click("startPauseBtn");
+  await run(app, 120);
+  const victim = app.state().lineup.F;
+  await app.setAvailPregame(victim, "out");
+  assert.equal(app.onField().filter(Boolean).length, 5,
+    "documents the old behaviour: the v21 build auto-picked a replacement with no prompt");
+  app.close();
+});
+
+test("the replacement picker offers the bench sorted by fewest minutes, and a manual sub always still works", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+  await app.manualSub("Aria Stagnitta", "M");   // give Aria some minutes on the bench-to-be
+  await run(app, 50);
+  await app.manualSub("Serafina Sinagra", "M"); // Aria is benched again, now with 50s on her
+
+  const victim = app.state().lineup.F;
+  await app.setAvailPregame(victim, "out");
+  const s = app.state();
+  const expected = ["Shalom Amaya", "Olivia Carpenter", "Norah Dineen", "Kennedy Kozlosky",
+                     "Juliette Maglio", "Luna Scrivano", "Serafina Sinagra", "Aria Stagnitta"]
+    .filter((p) => !app.onField().includes(p) && p !== victim)
+    .sort((a, b) => s.play[a] - s.play[b]);
+  assert.deepEqual(app.replaceOptions(), expected, "picker order matches the old auto-pick's fairness order");
+
+  await app.dismissReplacement();
+  assert.ok(!app.replaceModalOpen());
+  assert.equal(app.onField().filter(Boolean).length, 4, "left empty, as asked");
+
+  // The coach can still fill it by hand at any time.
+  await app.manualSub(expected[0], "F");
+  assert.equal(app.onField().filter(Boolean).length, 5);
+  app.close();
+});
+
+test("a player covering an emergency sub is protected from the fairness engine until two rotation checkpoints pass", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+
+  const victim = app.state().lineup.F;                 // e.g. Luna goes down injured
+  await app.setAvailPregame(victim, "rest");
+  const [cover] = app.replaceOptions();
+  await app.confirmReplacement(cover);
+  assert.equal(app.state().lineup.F, cover);
+  assert.equal(app.state().coverLocks[cover].for, victim);
+
+  await run(app, 300);                                  // past the 6:00 mark
+  assert.ok(!app.state().suggestedSub.outgoingPlayers.includes(cover),
+    "the covering player should not be suggested to come back out yet");
+
+  await app.setAvailPregame(victim, "available");       // coach clears her to play again
+  await run(app, 10);
+  assert.ok(!app.state().suggestedSub.incoming.includes(victim),
+    "she should not be auto-suggested back in the moment she's available again");
+
+  await app.click("acceptSubBtn");                      // checkpoint 1 of 2
+  assert.ok(app.state().coverLocks[cover], "the lock survives the first checkpoint");
+
+  await app.click("nextQuarterBtn");                    // checkpoint 2 of 2
+  assert.ok(!app.state().coverLocks[cover], "and clears at the second");
+  app.close();
+});
+
+test("a manual sub always overrides an active cover lock", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+
+  const victim = app.state().lineup.F;
+  await app.setAvailPregame(victim, "rest");
+  const [cover] = app.replaceOptions();
+  await app.confirmReplacement(cover);
+  await app.setAvailPregame(victim, "available");
+
+  // Even with an active lock, the coach can hand-pick her straight back in.
+  await app.manualSub(victim, "F");
+  assert.equal(app.state().lineup.F, victim);
   app.close();
 });
 
@@ -258,6 +373,8 @@ test("unchecking attendance in Pregame behaves the same as marking Out", async (
   assert.equal(s.present[victim], false);
   assert.equal(s.availability[victim], "out");
   assert.ok(!app.onField().includes(victim));
+  assert.ok(app.replaceModalOpen());
+  await app.confirmReplacement(app.replaceOptions()[0]);
   assert.equal(app.onField().filter(Boolean).length, 5);
   app.close();
 });
@@ -270,6 +387,7 @@ test("the in-game Player Status buttons still work and agree with Pregame", asyn
   await app.setAvailInGame(victim, "Out");
   assert.ok(!app.onField().includes(victim));
   assert.equal(app.state().availability[victim], "out");
+  assert.ok(app.replaceModalOpen(), "the in-game buttons open the same picker as Pregame");
   app.close();
 });
 
@@ -883,17 +1001,16 @@ test("the audit log records the plan, the clock and the goals", async () => {
   a.close();
 });
 
-test("the stale 3-player-batch wording is gone from the page", async () => {
+test("the stale v20-era 3-player-batch wording is gone from the page", async () => {
   const app = await openApp();
   const body = app.doc.body.textContent;
   assert.ok(!/swaps all 3 bench players/.test(body));
-  assert.ok(!/3 players at once/.test(body));
-  assert.equal(app.text("acceptSubBtn"), "Make Suggested Swap");
+  assert.equal(app.text("acceptSubBtn"), "Sub In Whole Bench");
   app.close();
 });
 
-test("the version banner says v22 so the deployed build is identifiable", async () => {
+test("the version banner says v23 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v22 STABLE/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v23 ROTATION/);
   app.close();
 });

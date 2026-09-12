@@ -186,6 +186,29 @@ export async function openApp({
       await flush();
     },
 
+    /** Names currently offered in the "who's going in?" replacement picker, in order. */
+    replaceOptions() {
+      return [...doc.querySelectorAll("#replaceOptions .replace-btn")]
+        .map((b) => b.dataset.name);
+    },
+
+    replaceModalOpen() {
+      return $("replaceModal").classList.contains("show");
+    },
+
+    /** Tap a candidate's button in the "who's going in?" replacement picker. */
+    async confirmReplacement(name) {
+      const btn = [...doc.querySelectorAll("#replaceOptions .replace-btn")]
+        .find((b) => b.dataset.name === name);
+      btn.click();
+      await flush();
+    },
+
+    async dismissReplacement() {
+      $("replaceLaterBtn").click();
+      await flush();
+    },
+
     /** Tap a bench player, then a field position, to make a manual sub. */
     async manualSub(incoming, slot) {
       const btn = [...doc.querySelectorAll("#benchSide .bench-btn")]

@@ -18,6 +18,7 @@ your-repo/
 ├── DEPLOY.md
 ├── README.md
 ├── V22_FIXES.md
+├── V23_ROTATION.md
 ├── package.json
 ├── package-lock.json
 ├── wrangler.json
@@ -114,11 +115,11 @@ This is the step that was missing last time. Do all three.
 2. **Check the version banner.** Load the site. Under the title it should read:
 
    ```
-   East Islip GU7 • 5v5 • 4 × 12-minute quarters • v22 STABLE
+   East Islip GU7 • 5v5 • 4 × 12-minute quarters • v23 ROTATION
    ```
 
-   If it still says `v19 GOALIE AUTHORITATIVE` or `v21 TEST CLOCK`, the deploy
-   did not land — go back to step 1. **Check this banner before every game.**
+   If it still says an older version, the deploy did not land — go back to
+   step 1. **Check this banner before every game.**
 
 3. **Check the API.** Open `https://team71.vjdifd.workers.dev/api/health` in a
    browser. You want `{"ok":true,...}`. If you get `{"ok":false,...}` the site is
@@ -131,8 +132,8 @@ The app is an installed PWA with a service worker. After a deploy:
 - The service worker fetches `index.html` from the network first, so one reload
   normally picks up the new version.
 - If a phone is stubborn: close the app fully (swipe it away), reopen, and pull
-  to refresh. The cache name changed to `team71-v22-stable`, so the old cache is
-  deleted on activation.
+  to refresh. The cache name changed to `team71-v23-rotation`, so the old cache
+  is deleted on activation.
 
 ---
 
