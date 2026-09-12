@@ -33,4 +33,4 @@ The Worker name in `wrangler.json` is already `team71`, matching the Cloudflare 
 
 One phone can create a shared game code. A second phone can join the same code as Coach or Viewer.
 
-The D1 `game_state` table is created automatically by the Worker on first use.
+The D1 `game_state` table is created automatically by the Worker on first use. 
