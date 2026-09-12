@@ -1618,10 +1618,13 @@
     }
 
     const s=state.suggestedSub;
+    const alreadyDone=state.subDone[Math.min(3,state.quarter)];
     const pairs=s.incoming.map((p,i)=>p+" IN → "+s.outgoingPlayers[i]+" OUT");
-    btn.textContent=s.incoming.length>1 ? "Sub In Whole Bench ("+s.incoming.length+")" : "Make Sub";
+    btn.textContent=alreadyDone
+      ? "Swap Again (asks first)"
+      : (s.incoming.length>1 ? "Sub In Whole Bench ("+s.incoming.length+")" : "Make Sub");
     $("subSuggestion").innerHTML=
-      "<strong>Suggested swap</strong><br>"+pairs.join("<br>")+
+      "<strong>"+(alreadyDone ? "Rotation already done this quarter" : "Suggested swap")+"</strong><br>"+pairs.join("<br>")+
       "<br><span class='muted small'>Clock keeps running. Make this swap only when play allows.</span>";
     btn.disabled=!canEdit();
   }
@@ -1629,6 +1632,16 @@
   function acceptSuggestedSub(){
     if(!guardEdit())return;
     if(!state.suggestedSub) return;
+
+    // v23.1: with a full-strength bench this exactly reverses the previous
+    // whole-bench swap, so an accidental double-tap (or several) silently
+    // thrashed the same players back and forth with the clock paused,
+    // filling the audit log with no benefit to anyone's minutes. Once this
+    // quarter's rotation is already done, a repeat swap needs a deliberate
+    // confirmation instead of firing on every tap.
+    if(state.subDone[Math.min(3,state.quarter)]){
+      if(!confirm("This quarter's rotation is already done. Swap the whole bench again anyway?")) return;
+    }
 
     // An early scheduled sub must NOT move the game clock. Settle official
     // time to this instant, make the lineup change, then re-anchor at the

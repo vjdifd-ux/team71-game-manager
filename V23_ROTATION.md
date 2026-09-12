@@ -23,6 +23,39 @@ unchanged and still work anytime.
 *Tests: "the suggested swap brings the whole bench on at once", "Sub In Whole
 Bench pairs fewest-minutes bench with most-minutes field, one for one".*
 
+### 1.1 A repeat press now asks first, so it can't silently thrash
+
+Reported from a real game's audit log: when the bench is exactly as big as
+the number of swappable field slots (the normal case for a full-strength
+5v5 roster), a second press of "Sub In Whole Bench" exactly undoes the
+first — the whole field and the whole bench trade places right back. A
+handful of taps in quick succession (an accidental double-tap, or pressing
+it again out of habit) produced a run of identical swaps that cancelled
+each other out, cluttering the audit log without changing anyone's minutes.
+
+Once a quarter's rotation is already marked done, pressing the button again
+now asks for confirmation ("This quarter's rotation is already done. Swap
+the whole bench again anyway?") instead of firing immediately, and the
+button relabels itself to "Swap Again (asks first)" so it's visibly a
+different action. Declining leaves the lineup untouched. This only guards
+the repeat case — the first press each quarter is still the single
+deliberate tap it always was.
+
+*Test: "pressing Sub In Whole Bench again after the rotation is done asks
+first instead of silently re-swapping".*
+
+### 1.2 Why the countdown can jump straight to ~12:00 — not a bug
+
+Accepting a whole-bench swap marks the quarter's rotation as done (see §1),
+so the countdown's target immediately switches from the 6:00 reminder to
+the actual quarter-end boundary. If you make that swap right as a quarter
+begins — lineup set, clock still paused, Start not yet pressed — quarter
+end is a full 12:00 away, and since the clock isn't running yet, the
+countdown just sits at that number instead of visibly ticking down. It
+looks like a freeze but isn't one: press Start and it counts down normally
+from there. No fix needed here — flagging it so it doesn't come back as a
+"frozen timer" report.
+
 ## 2. The 6:00 reminder now flashes until you act on it
 
 Previously the reminder sat quietly as a countdown pill with no particular

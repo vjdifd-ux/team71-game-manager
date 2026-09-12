@@ -218,6 +218,30 @@ test("the reminder starts flashing once 6:00 passes and stops once the sub is ma
   app.close();
 });
 
+test("REGRESSION: pressing Sub In Whole Bench again after the rotation is done asks first instead of silently re-swapping", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 400);                     // past 6:00
+
+  await app.click("acceptSubBtn");
+  assert.equal(app.state().subDone[0], true);
+  const afterFirst = app.state().lineup;
+  assert.match(app.text("acceptSubBtn"), /Swap Again/, "the button flags a repeat is unusual");
+
+  // A full-strength bench exactly mirrors the field, so an unconfirmed
+  // repeat press used to silently swap everyone right back — declining the
+  // confirmation must leave the lineup untouched instead.
+  app.win.confirm = () => false;
+  await app.click("acceptSubBtn");
+  assert.deepEqual(app.state().lineup, afterFirst, "declining leaves the lineup alone");
+
+  // An explicit confirm still lets the coach deliberately swap again.
+  app.win.confirm = () => true;
+  await app.click("acceptSubBtn");
+  assert.notDeepEqual(app.state().lineup, afterFirst, "confirming still allows a deliberate second swap");
+  app.close();
+});
+
 test("REGRESSION: the countdown keeps counting to the buzzer after the 6:00 mark", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
