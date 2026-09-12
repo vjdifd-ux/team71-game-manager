@@ -311,7 +311,7 @@ export default {
               copyFields(["goals","ourScore","theirScore","goalLog"]);
             }
             if(changed.includes("clock")){
-              copyFields(["elapsed","quarter","running","ended","timerOwnerId","clockStartedAt","clockAnchorElapsed","awaitingQuarterTransition"]);
+              copyFields(["elapsed","quarter","running","ended","timerOwnerId","clockStartedAt","clockAnchorElapsed","awaitingQuarterTransition","testSpeed"]);
             }
             if(changed.includes("stats")){
               copyFields(["play","gk"]);
@@ -396,7 +396,8 @@ function effectiveElapsed(s){
     return Math.min(
       2880,
       Number(s.clockAnchorElapsed ?? s.elapsed ?? 0) +
-      Math.max(0,(Date.now()-Number(s.clockStartedAt))/1000)
+      Math.max(0,(Date.now()-Number(s.clockStartedAt))/1000) *
+      Math.max(1,Number(s.testSpeed||1))
     );
   }
   return Number(s?.elapsed||0);

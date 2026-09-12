@@ -89,7 +89,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v19 GOALIE AUTHORITATIVE</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v21 TEST CLOCK</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -177,7 +177,7 @@
     </div>
 
     <div class="card">
-      <div class="row"><div><strong>Automatic Game Plan</strong><div class="muted small">Goalies rotate every quarter. Every 6 minutes, the app recommends swapping all 3 bench players with 3 field players while keeping the goalie in place.</div></div><button class="primary" id="buildPlanBtn">Build Game Plan</button><button id="clearGoaliesBtn">Clear Goalies</button></div>
+      <div class="row"><div><strong>Automatic Game Plan</strong><div class="muted small">Goalies rotate every quarter. At 6 minutes the app reminds you to look for a sub opportunity. It recommends one fair 1-for-1 swap at a time; the clock never stops for subs.</div></div><button class="primary" id="buildPlanBtn">Build Game Plan</button><button id="clearGoaliesBtn">Clear Goalies</button></div>
       <div id="planPreview" class="small muted" style="margin-top:10px">No plan built yet.</div>
     </div>
   </section>
@@ -186,16 +186,20 @@
     <div class="card">
       <div class="row">
         <div><div class="muted small" id="gameLabel">Team 71 vs Team 72</div><div class="score">Team 71 <span id="ourScore">0</span> – <span id="theirScore">0</span> <span id="oppName">Team 72</span></div></div>
-        <div style="text-align:right"><div id="quarterLabel"><strong>Q1</strong></div><div id="timer" class="timer">00:00</div></div>
+        <div style="text-align:right"><div id="quarterLabel"><strong>Q1</strong></div><div id="timer" class="timer">00:00</div><div id="totalTimer" class="muted small">Game 00:00</div></div>
       </div>
       <div class="controls" style="margin-top:10px">
         <button class="primary" id="startPauseBtn">Start</button>
-        <button id="nextQuarterBtn">End Period / Set Up Next Quarter</button>
+        <button class="warn" id="nextQuarterBtn">Next Quarter / Set Lineup</button>
         <button class="danger" id="endGameBtn">End Game</button>
         <button id="newGameBtn">New Game / Reset</button>
         <button id="undoBtn">Undo</button>
       </div>
-      <div class="controls" style="margin-top:10px"><label class="small"><input id="soundToggle" type="checkbox" checked> Sounds</label><span class="muted small">Warning at 5:30 and 11:30 • sub alert at 6:00 • period buzzer at 12:00</span></div>
+      <div class="controls" style="margin-top:10px">
+        <label class="small"><input id="soundToggle" type="checkbox" checked> Sounds</label>
+        <button id="testSpeedBtn" type="button">Test Speed: 1×</button>
+        <span id="testSpeedNote" class="muted small">Sub reminder at 6:00 (clock keeps running) • quarter buzzer at 12:00</span>
+      </div>
       <div id="status" class="notice">Build a game plan before starting.</div>
     </div>
 
@@ -204,11 +208,11 @@
         <div class="card">
           <div id="nextSubBox" class="nextsub">
             <div class="row"><strong id="nextEventLabel">Next Rotation</strong><span id="subCountdown" class="pill">6:00</span></div>
-            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">Normal rotation: 3 players at once every 6 minutes. You can still make a single manual sub anytime.</div>
+            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">At 6:00 you get a reminder only. The clock keeps running. Use the suggested 1-for-1 swap when play allows, or make any manual sub.</div>
             <div class="controls" style="margin-top:8px">
               <button id="acceptSubBtn" class="good">Make 3-Player Sub</button>
               <button id="changeSubBtn">Change Suggestion</button>
-              <button id="skipSubBtn">Skip / Mark Complete</button>
+              <button id="skipSubBtn">Dismiss Reminder</button>
             </div>
           </div>
         </div>
@@ -342,7 +346,7 @@
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,lastTick:null,
       shareCode:"", lastAuditCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
-      timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, soundEnabled:true
+      timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, testSpeed:1, soundEnabled:true
     };
   }
   function $(id){return document.getElementById(id)}
@@ -363,7 +367,12 @@
 
   function displayElapsed(){
     if(state.running && state.clockStartedAt){
-      return Math.min(GLEN, Number(state.clockAnchorElapsed||0) + Math.max(0,(Date.now()-state.clockStartedAt)/1000));
+      const rate=Math.max(1,Number(state.testSpeed||1));
+      return Math.min(
+        GLEN,
+        Number(state.clockAnchorElapsed||0) +
+        Math.max(0,(Date.now()-state.clockStartedAt)/1000)*rate
+      );
     }
     return Number(state.elapsed||0);
   }
@@ -429,8 +438,8 @@
     const e=displayElapsed();
     const q=Math.min(3,state.quarter);
     const qStart=q*QLEN, mid=qStart+SUBINT, end=qStart+QLEN;
-    if(!state.subDone[q] && e<mid) return {type:"sub",at:mid,label:"3-player sub"};
-    if(!state.subDone[q] && e>=mid && e<end) return {type:"sub",at:e,label:"3-player sub now"};
+    if(!state.subDone[q] && e<mid) return {type:"sub",at:mid,label:"Sub reminder"};
+    if(!state.subDone[q] && e>=mid && e<end) return {type:"sub",at:e,label:"Sub when ready"};
     return {type:"quarter",at:end,label:q===3?"Game end":"Quarter end / goalie change"};
   }
 
@@ -1178,10 +1187,28 @@
       state.lineup.GK=state.goaliePlan[0];
       save();
     }
-    $("timer").textContent=fmt(displayElapsed());
+    const totalNow=displayElapsed();
+    const quarterNow=Math.max(0,totalNow-state.quarter*QLEN);
+    $("timer").textContent=fmt(Math.min(QLEN,quarterNow));
+    $("totalTimer").textContent="Game "+fmt(totalNow)+" • Quarter "+(state.quarter+1)+" of 4";
     $("startPauseBtn").textContent=state.awaitingQuarterTransition ? "Start Next Quarter" : (state.running?"Pause":(state.elapsed?"Resume":"Start"));
     $("startPauseBtn").disabled = state.ended || (!canEdit());
     $("nextQuarterBtn").disabled = state.ended || (!canEdit());
+
+    const speed=Math.max(1,Number(state.testSpeed||1));
+    const testBtn=$("testSpeedBtn");
+    if(testBtn){
+      testBtn.textContent=speed===1 ? "Test Speed: 1×" : "TEST "+speed+"×";
+      testBtn.className=speed===1 ? "" : "danger";
+      testBtn.disabled=state.running || state.ended || !canEdit();
+      testBtn.title=state.running ? "Pause clock to change test speed" : "Cycle 1× → 10× → 60×";
+    }
+    const testNote=$("testSpeedNote");
+    if(testNote){
+      testNote.textContent=speed===1
+        ? "Sub reminder at 6:00 (clock keeps running) • quarter buzzer at 12:00"
+        : "TEST MODE ACTIVE • "+speed+"× • Quarter lasts ~"+Math.round(QLEN/speed)+" real seconds";
+    }
     const jersey=state.homeAway==="home"?"home":"away";
     const positions={F:"posF",LB:"posLB",RB:"posRB",M:"posM",GK:"posGK"};
     Object.entries(positions).forEach(([slot,id])=>{
@@ -1303,18 +1330,17 @@
     }
     if(!force && state.suggestedSub) return;
 
-    // Normal U8 rotation: with 8 available players, 3 are on the bench.
-    // Bring all 3 bench players in and remove the 3 field players with the
-    // most playing time. The goalkeeper remains in goal for the full quarter.
-    const incoming=[...b].slice(0,Math.min(3,b.length));
-    const outgoing=[...fieldSlots]
-      .sort((a,b)=>state.play[b.p]-state.play[a.p])
-      .slice(0,incoming.length);
+    // Game-day fairness: recommend ONE clear swap at a time.
+    // Lowest-minutes bench player comes in for highest-minutes field player.
+    // Recalculate after every substitution, so the coach can make 1, 2, or 3
+    // swaps whenever play actually allows.
+    const incoming=b[0];
+    const outgoing=[...fieldSlots].sort((a,b)=>state.play[b.p]-state.play[a.p])[0];
 
     state.suggestedSub={
-      incoming,
-      outgoingPlayers: outgoing.map(x=>x.p),
-      outgoingSlots: outgoing.map(x=>x.slot)
+      incoming:[incoming],
+      outgoingPlayers:[outgoing.p],
+      outgoingSlots:[outgoing.slot]
     };
   }
 
@@ -1323,13 +1349,13 @@
     const e=displayElapsed();
     const until=Math.max(0,event.at-e);
     $("subCountdown").textContent=fmt(until);
-    $("nextEventLabel").textContent=event.type==="sub"?"Next 3-Player Sub":event.label;
+    $("nextEventLabel").textContent=event.type==="sub"?"Sub Opportunity":event.label;
     suggestSub(false);
 
     if(event.type==="quarter"){
       $("subSuggestion").innerHTML="<strong>"+event.label+"</strong><br>Goalie rotation occurs at the quarter break.";
       $("acceptSubBtn").disabled=true;
-      $("acceptSubBtn").textContent="Scheduled Rotation Complete";
+      $("acceptSubBtn").textContent="Reminder Complete";
       return;
     }
 
@@ -1342,10 +1368,10 @@
     const s=state.suggestedSub;
     const pairs=s.incoming.map((p,i)=>p+" IN → "+s.outgoingPlayers[i]+" OUT");
     $("subSuggestion").innerHTML =
-      "<strong>"+s.incoming.length+"-player rotation</strong><br>" +
-      pairs.join("<br>");
+      "<strong>Suggested swap</strong><br>" + pairs.join("<br>") +
+      "<br><span class='muted small'>Clock keeps running. Make this swap only when play allows.</span>";
     $("acceptSubBtn").disabled=false;
-    $("acceptSubBtn").textContent = e>=event.at ? "Make "+s.incoming.length+"-Player Sub Now" : "Make "+s.incoming.length+"-Player Sub Early";
+    $("acceptSubBtn").textContent = "Make Suggested Swap";
   }
 
   function acceptSuggestedSub(){
@@ -1365,8 +1391,9 @@
     });
 
     const desc=s.incoming.map((p,i)=>p+" for "+s.outgoingPlayers[i]).join(", ");
-    state.subDone[state.quarter]=true;
     state.suggestedSub=null;
+    // Do not mark the quarter's substitution work complete. The coach may
+    // make additional one-for-one swaps later as needed.
     state.nextSubAt=currentQuarterBoundary();
 
     if(wasRunning){
@@ -1377,8 +1404,9 @@
 
     actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup"]);
     addAudit("Scheduled substitution",desc);
+    suggestSub(true);
     renderAll();
-    setStatus("Rotation completed: "+desc+".");
+    setStatus("Sub made: "+desc+". Clock continued running.");
   }
 
 
@@ -1388,7 +1416,7 @@
       setStatus("The scheduled rotation is already complete.");
       return;
     }
-    if(!confirm("Mark this 6-minute rotation complete without making the suggested group sub?")) return;
+    if(!confirm("Dismiss the 6-minute substitution reminder for this quarter? The clock will keep running.")) return;
 
     pushUndo("skip scheduled rotation");
     state.subDone[state.quarter]=true;
@@ -1397,12 +1425,26 @@
     actionSave(["lineup"]);
     addAudit("Rotation skipped","Marked scheduled rotation complete");
     renderAll();
-    setStatus("Scheduled rotation marked complete. You can resume the clock.");
+    setStatus("Sub reminder dismissed. The clock continues normally.");
   }
 
   function renderGoals(){
-    const box=$("goalScorers");box.innerHTML="";
-    onField().forEach(p=>{const b=document.createElement("button");b.textContent="⚽ "+short(p)+" ("+(state.goals[p]||0)+")";b.disabled=!canEdit();b.onclick=()=>teamGoal(p);box.append(b)});
+    const box=$("goalScorers");
+    box.innerHTML="";
+    roster.filter(p=>state.present[p] && state.availability[p]==="available").forEach(p=>{
+      const b=document.createElement("button");
+      b.className="good";
+      b.style.minHeight="52px";
+      b.style.fontWeight="800";
+      b.textContent="⚽ +1 "+short(p)+" ("+(state.goals[p]||0)+")";
+      b.disabled=!canEdit()||state.ended;
+      b.onclick=(ev)=>{
+        ev.preventDefault();
+        ev.stopPropagation();
+        teamGoal(p);
+      };
+      box.append(b);
+    });
   }
   function teamGoal(p){if(!guardEdit())return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Team 71 goal",p+" scored — "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Goal: "+p)}
   function oppGoal(){if(!guardEdit())return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Opponent goal","Score "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Opponent goal recorded.")}
@@ -1416,6 +1458,31 @@
   }
 
   function setStatus(t){$("status").textContent=t}
+  function cycleTestSpeed(){
+    if(!guardEdit())return;
+
+    if(state.running){
+      setStatus("Pause the clock before changing Test Speed.");
+      return;
+    }
+
+    const speeds=[1,10,60];
+    const current=Math.max(1,Number(state.testSpeed||1));
+    const index=speeds.indexOf(current);
+    state.testSpeed=speeds[(index+1)%speeds.length];
+
+    save();
+    actionSave(["clock"]);
+    renderGame();
+
+    if(state.testSpeed===1){
+      setStatus("Test Speed off — clock is back to real time.");
+    }else{
+      const quarterSeconds=Math.round(QLEN/state.testSpeed);
+      setStatus("TEST MODE "+state.testSpeed+"× — a 12-minute quarter takes about "+quarterSeconds+" real seconds.");
+    }
+  }
+
   function startPause(){
     if(!guardEdit())return;
     if(state.ended)return;
@@ -1432,13 +1499,6 @@
 
     if(state.running && state.timerOwnerId && state.timerOwnerId!==CLIENT_ID){
       setStatus("Clock is already running on the other coach's phone.");
-      return;
-    }
-
-    // At/after the scheduled mid-quarter break, require the coach to finish
-    // or explicitly skip the rotation before resuming.
-    if(!state.running && !state.subDone[state.quarter] && state.elapsed>=currentSubBoundary() && state.elapsed<currentQuarterBoundary()){
-      setStatus("Complete the scheduled rotation, or tap Skip / Mark Complete before resuming.");
       return;
     }
 
@@ -1472,22 +1532,13 @@
   function advanceClockToNow(){
     if(!state.running || state.timerOwnerId!==CLIENT_ID || !state.clockStartedAt) return {hit:null};
 
+    const rate=Math.max(1,Number(state.testSpeed||1));
     const target=Math.min(
       GLEN,
-      Number(state.clockAnchorElapsed||0)+Math.max(0,(Date.now()-state.clockStartedAt)/1000)
+      Number(state.clockAnchorElapsed||0)+Math.max(0,(Date.now()-state.clockStartedAt)/1000)*rate
     );
 
-    let boundary=currentQuarterBoundary();
-    let boundaryType="quarter";
-
-    if(!state.subDone[state.quarter] && bench().length>0){
-      const subAt=currentSubBoundary();
-      if(state.elapsed < subAt && subAt < boundary){
-        boundary=subAt;
-        boundaryType="sub";
-      }
-    }
-
+    const boundary=currentQuarterBoundary();
     const capped=Math.min(target,boundary);
     const d=Math.max(0,capped-state.elapsed);
 
@@ -1497,7 +1548,7 @@
       state.elapsed=capped;
     }
 
-    return {hit: target>=boundary ? boundaryType : null};
+    return {hit: target>=boundary ? "quarter" : null};
   }
 
   function tick(){
@@ -1524,23 +1575,16 @@
 
     if(!state.subDone[q] && bench().length>0 && crossed(warnSub)){
       playWarning();
-      setStatus("30 seconds until the 3-player rotation.");
+      setStatus("30 seconds until the substitution reminder.");
     }
 
-    if(result.hit==="sub"){
-      state.running=false;
-      state.clockStartedAt=null;
-      state.clockAnchorElapsed=state.elapsed;
+    if(!state.subDone[q] && bench().length>0 && crossed(subAt)){
       suggestSub(true);
       playSubAlert();
-      releaseWakeLock();
-      setStatus("6-minute rotation: swap the bench players in, then resume.");
-      actionSave(["clock","stats","lineup"]);
-      renderAll();
-      return;
+      setStatus("6-minute sub reminder — clock is still running. Sub when there is a good stoppage.");
+      actionSave(["stats","lineup"]);
     }
 
-    // With no bench, do not stop at six minutes.
     if(!state.subDone[q] && bench().length===0 && state.elapsed>=subAt){
       state.subDone[q]=true;
       state.nextSubAt=qEnd;
@@ -1560,10 +1604,22 @@
       playPeriodBuzzer();
 
       if(q<3){
-        state.awaitingQuarterTransition=true;
-        showQuarterTransition();
-        actionSave(["clock","stats"]);
+        const targetQuarter=q+1;
+        const preview=previewNextQuarterLineup(targetQuarter);
+        state.quarter=targetQuarter;
+        state.elapsed=targetQuarter*QLEN;
+        state.clockAnchorElapsed=state.elapsed;
+        state.awaitingQuarterTransition=false;
+        state.subDone[state.quarter]=false;
+        state.suggestedSub=null;
+        state.selectedBench=null;
+        state.nextSubAt=state.quarter*QLEN+SUBINT;
+        if(Object.values(preview).filter(Boolean).length===5){
+          state.lineup={GK:preview.GK,LB:preview.LB,RB:preview.RB,M:preview.M,F:preview.F};
+        }
+        actionSave(["clock","stats","lineup"]);
         renderAll();
+        setStatus("Quarter "+(state.quarter+1)+" ready. Position players, then press Start.");
         return;
       }else{
         state.awaitingQuarterTransition=false;
@@ -1683,12 +1739,12 @@
   function nextQuarter(){
     if(!guardEdit())return;
     if(state.quarter>=3){
-      setStatus("Already in the 4th quarter.");
+      setStatus("Already in Quarter 4.");
       return;
     }
 
-    // If the timer-owning phone is running, settle player time exactly to
-    // this click before moving to the next period.
+    if(!confirm("Move to Quarter "+(state.quarter+2)+" and show its lineup? The clock will pause.")) return;
+
     if(state.running && state.timerOwnerId===CLIENT_ID){
       advanceClockToNow();
     }
@@ -1702,10 +1758,6 @@
     }
 
     pushUndo("move to next quarter");
-
-    // Explicitly ending the period advances the official game clock to the
-    // start boundary of the next quarter. Unlike a substitution, this button
-    // is intentionally a period-ending action.
     state.running=false;
     state.clockStartedAt=null;
     state.timerOwnerId="";
@@ -1718,8 +1770,6 @@
     state.selectedBench=null;
     state.nextSubAt=state.quarter*QLEN+SUBINT;
 
-    // Put the NEXT quarter lineup onto the field immediately so the coaches
-    // can physically position the girls before starting the clock.
     state.lineup={
       GK:preview.GK,
       LB:preview.LB,
@@ -1733,7 +1783,7 @@
     addAudit("Moved to next quarter",
       "Quarter "+(state.quarter+1)+" setup — GK "+(state.lineup.GK||"—"));
     renderAll();
-    setStatus("Quarter "+(state.quarter+1)+" ready. Position the girls, then press Start.");
+    setStatus("Quarter "+(state.quarter+1)+" lineup is on the field. Position players, then press Start.");
   }
 
   async function endGame(){
@@ -1883,6 +1933,7 @@
   $("joinActiveViewerBtn").onclick=()=>joinActiveGame("viewer");
   $("joinActiveCoachBtn").onclick=()=>joinActiveGame("coach");
   $("soundToggle").onchange=e=>{state.soundEnabled=!!e.target.checked;unlockAudio();save()};
+  $("testSpeedBtn").onclick=cycleTestSpeed;
 
   $("createShareBtn").onclick=()=>{if(!guardEdit())return;createSharedGame()};
   $("connectionTestBtn").onclick=runConnectionTest;
