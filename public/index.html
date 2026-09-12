@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>Team 71 Game Manager</title>
+  <style>
+    :root{
+      --bg:#0b1220; --panel:#111827; --card:#1f2937; --line:#334155; --text:#f8fafc;
+      --muted:#94a3b8; --accent:#2563eb; --good:#16a34a; --warn:#d97706; --danger:#dc2626;
+      --field1:#74b85a; --field2:#65a64e; --home:#ef5a4d; --away:#3b82f6;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,input,select{font:inherit}
+    button{min-height:44px;border:1px solid var(--line);border-radius:12px;padding:10px 13px;background:#0f172a;color:var(--text)}
+    button.primary{background:var(--accent);border-color:var(--accent);font-weight:700}
+    button.good{background:var(--good);border-color:var(--good)}
+    button.warn{background:var(--warn);border-color:var(--warn)}
+    button.danger{background:var(--danger);border-color:var(--danger)}
+    button:disabled{opacity:.45}
+    input,select{min-height:44px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#0f172a;color:var(--text)}
+    .app{max-width:1180px;margin:0 auto;padding:14px}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    h1{font-size:1.35rem;margin:0}.muted{color:var(--muted)}.small{font-size:.84rem}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .tabs button.active{background:var(--accent);border-color:var(--accent)}
+    .panel{display:none}.panel.active{display:block}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    @media(max-width:760px){.grid2,.grid4{grid-template-columns:1fr}}
+    .player-row{display:grid;grid-template-columns:1.3fr .8fr .8fr;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+    @media(max-width:650px){.player-row{grid-template-columns:1fr}.player-row>*{width:100%}}
+    .score{font-size:1.75rem;font-weight:800}.timer{font-size:3rem;font-weight:900;letter-spacing:.03em}
+    .game-layout{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+    @media(max-width:900px){.game-layout{grid-template-columns:1fr}}
+    .field{position:relative;aspect-ratio:4/5;border-radius:18px;overflow:hidden;background:
+      linear-gradient(to bottom,var(--field1) 0 20%,var(--field2) 20% 40%,var(--field1) 40% 60%,var(--field2) 60% 80%,var(--field1) 80% 100%);
+      border:1px solid var(--line)}
+    .field:before{content:"";position:absolute;inset:18px;border:3px solid rgba(255,255,255,.25);border-radius:5px}
+    .half{position:absolute;left:18px;right:18px;top:50%;height:3px;background:rgba(255,255,255,.22)}
+    .circle{position:absolute;left:50%;top:50%;width:90px;height:90px;border:3px solid rgba(255,255,255,.18);border-radius:50%;transform:translate(-50%,-50%)}
+    .box{position:absolute;left:50%;transform:translateX(-50%);width:45%;height:17%;border:3px solid rgba(255,255,255,.18)}
+    .box.top{top:18px;border-top:none}.box.bottom{bottom:18px;border-bottom:none}
+    .fp{position:absolute;transform:translate(-50%,-50%);width:100px;text-align:center;cursor:pointer}
+    .shirt{width:54px;height:42px;margin:0 auto 5px;border-radius:8px 8px 10px 10px;border:2px solid rgba(0,0,0,.3);box-shadow:0 2px 5px rgba(0,0,0,.25)}
+    .shirt.home{background:var(--home)}.shirt.away{background:var(--away)}.shirt.gk{background:#30343b}
+    .fname{font-size:.75rem;font-weight:800;text-shadow:0 1px 1px #000}.fpos{font-size:.68rem}
+    .bench-btn{display:flex;justify-content:space-between;gap:8px;width:100%;margin-bottom:8px;text-align:left}
+    .bench-btn.selected{outline:2px solid #60a5fa;background:#172554}
+    .notice{background:#172554;color:#dbeafe;border-radius:12px;padding:10px 12px;margin-top:10px}
+    .nextsub{background:#052e16;border:1px solid #166534;border-radius:14px;padding:12px}
+    .nextsub strong{font-size:1.05rem}
+
+    .field-stage{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:12px;align-items:start;margin-top:10px}
+    @media(max-width:900px){.field-stage{grid-template-columns:1fr}}
+    .bench-side{background:#0f172a;border:1px solid var(--line);border-radius:14px;padding:10px}
+    .bench-side h4{margin:0 0 6px 0;font-size:.95rem}
+    .bench-side .muted{display:block;margin-bottom:8px}
+    .pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#172554;color:#bfdbfe;font-size:.78rem}
+    table{width:100%;border-collapse:collapse;font-size:.9rem}
+    th,td{border-bottom:1px solid var(--line);padding:8px 5px;text-align:left}
+    th{color:var(--muted)}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:16px;z-index:99}
+    .modal.show{display:flex}.modal-card{width:min(520px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px}
+    .history-game{padding:10px 0;border-bottom:1px solid var(--line)}
+    .hidden{display:none!important}
+  
+    .goalie-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+    @media(max-width:700px){.goalie-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    .goalie-q{border:1px solid var(--line);background:#0f172a;border-radius:12px;padding:9px}
+    .goalie-q.current{outline:2px solid #60a5fa;background:#172554}
+    .goalie-q .qtag{font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700}
+    .goalie-q .gname{font-weight:700;margin-top:3px}
+    .shared-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media(max-width:700px){.shared-grid{grid-template-columns:1fr}}
+    .sync-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#64748b;margin-right:6px}
+    .sync-dot.live{background:#22c55e}.sync-dot.err{background:#ef4444}
+    .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.15rem;font-weight:800;letter-spacing:.08em}
+
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters</div></div>
+    <div class="pill" id="installHint">Works offline after first load</div>
+  </div>
+
+  <div class="tabs">
+    <button data-tab="setup" class="active">Pregame</button>
+    <button data-tab="game">Game</button>
+    <button data-tab="history">History</button>
+    <button data-tab="backup">Backup</button>
+  </div>
+
+  <section id="setup" class="panel active">
+    <div class="card">
+      <strong>Game Setup</strong>
+      <div class="grid2" style="margin-top:10px">
+        <label>Opponent<input id="opponent" value="Team 72"></label>
+        <label>Jersey / Side<select id="homeAway"><option value="home">Home — Red</option><option value="away">Away — Blue</option></select></label>
+      </div>
+    </div>
+
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <strong>Shared Game</strong>
+          <div class="muted small" style="margin-top:4px">Use the same game code on both phones. Maureen can join as a viewer or as a second coach.</div>
+        </div>
+        <div id="syncStatus" class="small"><span class="sync-dot" id="syncDot"></span><span id="syncText">Local only</span></div>
+      </div>
+      <div class="shared-grid" style="margin-top:10px">
+        <div>
+          <div class="small muted">Current game code</div>
+          <div id="shareCodeDisplay" class="code" style="margin:6px 0">—</div>
+          <div class="controls">
+            <button id="createShareBtn">Create Shared Game</button>
+            <button id="leaveShareBtn">Leave Shared Game</button>
+          </div>
+        </div>
+        <div>
+          <label class="small muted">Join existing game code</label>
+          <input id="joinCode" maxlength="8" placeholder="e.g. T71A8K" style="width:100%;margin-top:5px;text-transform:uppercase">
+          <label class="small muted" style="display:block;margin-top:8px">This phone's role</label>
+          <select id="shareRole" style="width:100%;margin-top:5px">
+            <option value="coach">Coach — can make changes</option>
+            <option value="viewer">Viewer — follow live status only</option>
+          </select>
+          <button id="joinShareBtn" class="primary" style="margin-top:8px;width:100%">Join Shared Game</button>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="card">
+      <div class="row"><strong>Players</strong><button id="allAvailableBtn">All Present & Available</button></div>
+      <div class="muted small" style="margin-top:5px">Set attendance and goalie preference. “Cannot GK” excludes a player from automatic goalie rotation.</div>
+      <div id="setupPlayers"></div>
+    </div>
+
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <strong>Goalie Plan — Full Game</strong>
+          <div class="muted small" style="margin-top:4px">Set one goalie for each 12-minute period. Build Game Plan will suggest a rotation, but you can override any quarter.</div>
+        </div>
+      </div>
+      <div id="goaliePlanner" class="goalie-strip"></div>
+    </div>
+
+    <div class="card">
+      <div class="row"><div><strong>Automatic Game Plan</strong><div class="muted small">Goalies rotate every quarter. Every 6 minutes, the app recommends swapping all 3 bench players with 3 field players while keeping the goalie in place.</div></div><button class="primary" id="buildPlanBtn">Build Game Plan</button></div>
+      <div id="planPreview" class="small muted" style="margin-top:10px">No plan built yet.</div>
+    </div>
+  </section>
+
+  <section id="game" class="panel">
+    <div class="card">
+      <div class="row">
+        <div><div class="muted small" id="gameLabel">Team 71 vs Team 72</div><div class="score">Team 71 <span id="ourScore">0</span> – <span id="theirScore">0</span> <span id="oppName">Team 72</span></div></div>
+        <div style="text-align:right"><div id="quarterLabel"><strong>Q1</strong></div><div id="timer" class="timer">00:00</div></div>
+      </div>
+      <div class="controls" style="margin-top:10px">
+        <button class="primary" id="startPauseBtn">Start</button>
+        <button id="nextQuarterBtn">Next Quarter</button>
+        <button class="danger" id="endGameBtn">End Game</button>
+        <button id="undoBtn">Undo</button>
+      </div>
+      <div id="status" class="notice">Build a game plan before starting.</div>
+    </div>
+
+    <div class="game-layout">
+      <div>
+        <div class="card">
+          <div id="nextSubBox" class="nextsub">
+            <div class="row"><strong>Next Sub</strong><span id="subCountdown" class="pill">6:00</span></div>
+            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">Normal rotation: 3 players at once every 6 minutes. You can still make a single manual sub anytime.</div>
+            <div class="controls" style="margin-top:8px">
+              <button id="acceptSubBtn" class="good">Make 3-Player Sub</button>
+              <button id="changeSubBtn">Change Suggestion</button>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="row"><strong>Goalie Rotation — Full Game</strong><span class="muted small">Current period highlighted</span></div>
+          <div id="gameGoalieStrip" class="goalie-strip"></div>
+        </div>
+
+        <div class="card">
+          <div class="row"><strong>Field</strong><span class="muted small">Tap a bench player on the sideline, then tap a field position</span></div>
+          <div class="field-stage">
+            <div class="field">
+              <div class="box top"></div><div class="half"></div><div class="circle"></div><div class="box bottom"></div>
+              <div class="fp" id="posF" data-slot="F" style="left:50%;top:20%"></div>
+              <div class="fp" id="posLB" data-slot="LB" style="left:28%;top:50%"></div>
+              <div class="fp" id="posRB" data-slot="RB" style="left:72%;top:50%"></div>
+              <div class="fp" id="posM" data-slot="M" style="left:50%;top:66%"></div>
+              <div class="fp" id="posGK" data-slot="GK" style="left:50%;top:86%"></div>
+            </div>
+            <div class="bench-side">
+              <h4>Sideline Bench</h4>
+              <span class="muted small">These are the players ready to sub in.</span>
+              <div id="benchSide"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row"><strong>Quick Score</strong><span class="pill">Team 71 <span id="quickUs">0</span> – <span id="quickThem">0</span></span></div>
+          <div id="goalScorers" class="grid2" style="margin-top:10px"></div>
+          <div class="controls" style="margin-top:10px"><button id="oppGoalBtn">+ Opponent Goal</button><button id="undoGoalBtn">Undo Last Goal</button></div>
+        </div>
+      </div>
+
+      <aside>
+        <div class="card">
+          <strong>Substitution Help</strong>
+          <div class="muted small" style="margin:4px 0 10px">Bench players now appear next to the field for faster subbing. Tap a sideline player, then tap a field position. The normal 6-minute rotation still swaps all 3 bench players together.</div>
+        </div>
+
+        <div class="card">
+          <strong>Player Status</strong>
+          <div id="statusPlayers" style="margin-top:8px"></div>
+        </div>
+
+        <div class="card">
+          <strong>Live Minutes</strong>
+          <div style="overflow:auto;margin-top:8px"><table><thead><tr><th>Player</th><th>Total</th><th>GK</th><th>Goals</th></tr></thead><tbody id="liveMinutes"></tbody></table></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="history" class="panel">
+    <div class="card"><strong>Season History</strong><div class="muted small" style="margin-top:4px">Saved on this device.</div><div id="historyList" style="margin-top:10px"></div></div>
+    <div class="card"><strong>Season Totals</strong><div style="overflow:auto;margin-top:8px"><table><thead><tr><th>Player</th><th>Minutes</th><th>GK Qtrs</th><th>Goals</th></tr></thead><tbody id="seasonTotals"></tbody></table></div></div>
+  </section>
+
+  <section id="backup" class="panel">
+    <div class="card">
+      <strong>Backup / Restore</strong>
+      <div class="muted small" style="margin:5px 0 10px">Export season history before changing phones or clearing browser data.</div>
+      <div class="controls"><button id="exportBtn">Export Backup</button><label style="display:inline-block"><input id="importFile" type="file" accept=".json,application/json" style="max-width:230px"></label></div>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="quarterModal">
+  <div class="modal-card">
+    <h2 style="margin-top:0">Quarter Complete</h2>
+    <div id="quarterTransition"></div>
+    <div class="controls" style="margin-top:14px"><button class="primary" id="startNextQuarterBtn">Start Next Quarter</button><button id="closeQuarterBtn">Not Yet</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const roster=["Shalom Amaya","Olivia Carpenter","Norah Dineen","Kennedy Kozlosky","Juliette Maglio","Luna Scrivano","Serafina Sinagra","Aria Stagnitta"];
+  const slots=["GK","LB","RB","M","F"];
+  const posNames={GK:"Goalie",LB:"Left Back",RB:"Right Back",M:"Support / Mid",F:"Forward"};
+  const KEY="team71-v5-current", HIST="team71-v5-history";
+  const QLEN=720, GLEN=2880, SUBINT=360;
+  let seasonHistory=loadJSON(HIST,[]);
+  let state=fresh();
+  let timerHandle=null;
+  let undoStack=[];
+  let cloudPollHandle=null;
+  let applyingRemote=false;
+  let lastSyncedJSON="";
+
+  function fresh(){
+    return {
+      opponent:"Team 72",homeAway:"home",
+      present:Object.fromEntries(roster.map(p=>[p,true])),
+      availability:Object.fromEntries(roster.map(p=>[p,"available"])),
+      gkPref:Object.fromEntries(roster.map(p=>[p,"yes"])),
+      goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null},
+      selectedBench:null, elapsed:0, quarter:0, running:false, ended:false, planBuilt:false,
+      play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
+      goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
+      nextSubAt:SUBINT, suggestedSub:null,lastTick:null,
+      shareCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0
+    };
+  }
+  function $(id){return document.getElementById(id)}
+  function loadJSON(k,d){try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}}
+  function save(){localStorage.setItem(KEY,JSON.stringify({...state,running:false,lastTick:null}))}
+  function load(){const x=loadJSON(KEY,null); if(x) state={...fresh(),...x,running:false,lastTick:null}}
+
+  function randomGameCode(){
+    const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let s="T71";
+    for(let i=0;i<4;i++) s+=chars[Math.floor(Math.random()*chars.length)];
+    return s;
+  }
+  function setSyncStatus(mode,text){
+    const dot=$("syncDot"), t=$("syncText");
+    if(!dot||!t)return;
+    dot.className="sync-dot"+(mode==="live"?" live":mode==="err"?" err":"");
+    t.textContent=text;
+  }
+  function cloudPayload(){
+    const copy=JSON.parse(JSON.stringify(state));
+    copy.lastTick=null;
+    copy.lastCloudUpdate=Date.now();
+    return copy;
+  }
+  async function cloudPush(){
+    if(applyingRemote || !state.shareCode || state.shareRole==="viewer") return;
+    try{
+      const payload=cloudPayload();
+      payload.syncVersion=(state.syncVersion||0)+1;
+      const r=await fetch("/api/game/"+encodeURIComponent(state.shareCode),{
+        method:"PUT",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify(payload)
+      });
+      if(!r.ok) throw new Error("sync failed");
+      const data=await r.json();
+      state.syncVersion=data.syncVersion||payload.syncVersion;
+      state.lastCloudUpdate=Date.now();
+      localStorage.setItem(KEY,JSON.stringify({...state,running:false,lastTick:null}));
+      lastSyncedJSON=JSON.stringify(payload);
+      setSyncStatus("live","Shared • synced");
+    }catch(e){
+      setSyncStatus("err","Shared • sync error");
+    }
+  }
+  async function cloudPull(){
+    if(!state.shareCode) return;
+    try{
+      const r=await fetch("/api/game/"+encodeURIComponent(state.shareCode),{cache:"no-store"});
+      if(r.status===404){ setSyncStatus("err","Game code not found"); return; }
+      if(!r.ok) throw new Error("pull failed");
+      const remote=await r.json();
+      if((remote.syncVersion||0) > (state.syncVersion||0)){
+        applyingRemote=true;
+        const localShare={shareCode:state.shareCode,shareRole:state.shareRole};
+        state={...fresh(),...remote,...localShare,lastTick:null};
+        // A viewer follows the shared running clock locally between polls.
+        if(state.running){
+          state.lastTick=Date.now();
+          if(!timerHandle)timerHandle=setInterval(tick,500);
+        }
+        localStorage.setItem(KEY,JSON.stringify({...state,running:false,lastTick:null}));
+        renderAll();
+        applyingRemote=false;
+      }
+      setSyncStatus("live",state.shareRole==="viewer"?"Shared • viewing live":"Shared • synced");
+    }catch(e){
+      setSyncStatus("err","Shared • connection error");
+    }
+  }
+  function startCloudPolling(){
+    if(cloudPollHandle)clearInterval(cloudPollHandle);
+    if(state.shareCode){
+      cloudPollHandle=setInterval(cloudPull,1500);
+      cloudPull();
+    }
+  }
+  async function createSharedGame(){
+    if(state.shareRole==="viewer") state.shareRole="coach";
+    state.shareCode=randomGameCode();
+    state.syncVersion=0;
+    save();
+    await cloudPush();
+    startCloudPolling();
+    renderAll();
+  }
+  async function joinSharedGame(){
+    const code=$("joinCode").value.trim().toUpperCase();
+    if(!code){alert("Enter the game code.");return}
+    const role=$("shareRole").value;
+    state.shareCode=code;state.shareRole=role;state.syncVersion=0;save();
+    await cloudPull();
+    startCloudPolling();
+    renderAll();
+  }
+  function leaveSharedGame(){
+    state.shareCode="";state.shareRole="coach";state.syncVersion=0;
+    if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+    actionSave();renderAll();setSyncStatus("","Local only");
+  }
+  function canEdit(){
+    return state.shareRole!=="viewer";
+  }
+  function guardEdit(){
+    if(canEdit()) return true;
+    setStatus("Viewer mode: this phone follows the live game but cannot make changes.");
+    return false;
+  }
+  function actionSave(){
+    save();
+    cloudPush();
+  }
+
+  function fmt(s){s=Math.max(0,Math.floor(s));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0")}
+  function minfmt(s){return (s/60).toFixed(1).replace(".0","")}
+  function activePool(){return roster.filter(p=>state.present[p]&&state.availability[p]==="available")}
+  function onField(){return slots.map(s=>state.lineup[s]).filter(Boolean)}
+  function bench(){const set=new Set(onField());return activePool().filter(p=>!set.has(p))}
+  function short(n){if(!n)return"Empty";const a=n.split(" ");return a[0]+" "+(a[1]?a[1][0]+".":"")}
+  function pushUndo(label){undoStack.push({label,state:JSON.parse(JSON.stringify(state))});if(undoStack.length>20)undoStack.shift()}
+  function undo(){const u=undoStack.pop();if(!u){setStatus("Nothing to undo.");return} state=u.state;actionSave();renderAll();setStatus("Undid: "+u.label)}
+
+  document.querySelectorAll(".tabs button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
+  function showTab(id){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===id));if(id==="history")renderHistory()}
+
+  function seasonStats(){
+    const s=Object.fromEntries(roster.map(p=>[p,{minutes:0,gkQ:0,goals:0}]));
+    seasonHistory.forEach(g=>roster.forEach(p=>{s[p].minutes+=(g.play?.[p]||0)/60;s[p].gkQ+=(g.gkQuarters?.[p]||0);s[p].goals+=(g.goals?.[p]||0)}));
+    return s;
+  }
+
+  function renderSetup(){
+    $("opponent").value=state.opponent;$("homeAway").value=state.homeAway;
+    const box=$("setupPlayers");box.innerHTML="";
+    roster.forEach(p=>{
+      const r=document.createElement("div");r.className="player-row";
+      const name=document.createElement("label");name.innerHTML='<input type="checkbox" '+(state.present[p]?"checked":"")+' style="width:20px;height:20px;margin-right:8px"> <strong>'+p+'</strong>';
+      name.querySelector("input").addEventListener("change",e=>{state.present[p]=e.target.checked;if(!e.target.checked)state.availability[p]="out";save();renderAll()});
+      const avail=document.createElement("select");
+      [["available","Available"],["rest","Resting"],["out","Out / Hurt"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.availability[p]===v)o.selected=true;avail.append(o)});
+      avail.addEventListener("change",()=>{state.availability[p]=avail.value;if(avail.value!=="out")state.present[p]=true;save();renderAll()});
+      const gk=document.createElement("select");
+      [["yes","Will play GK"],["prefer","Prefer not GK"],["no","Cannot GK"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.gkPref[p]===v)o.selected=true;gk.append(o)});
+      gk.addEventListener("change",()=>{state.gkPref[p]=gk.value;save()});
+      r.append(name,avail,gk);box.append(r);
+    });
+    $("planPreview").innerHTML=state.planBuilt?'<strong>Goalies:</strong> '+state.goaliePlan.map((g,i)=>"Q"+(i+1)+" "+(g||"—")).join(" • ")+"<br><strong>Starting five:</strong> "+onField().join(", "):"No plan built yet.";
+  }
+
+
+  function renderGoaliePlanner(){
+    const box=$("goaliePlanner");
+    if(!box)return;
+    box.innerHTML="";
+    for(let q=0;q<4;q++){
+      const card=document.createElement("div");
+      card.className="goalie-q"+(q===state.quarter?" current":"");
+      const tag=document.createElement("div");tag.className="qtag";tag.textContent="Quarter "+(q+1);
+      const sel=document.createElement("select");sel.style.marginTop="6px";
+      const blank=document.createElement("option");blank.value="";blank.textContent="Choose goalie";sel.append(blank);
+      activePool().filter(p=>state.gkPref[p]!=="no").forEach(p=>{
+        const o=document.createElement("option");o.value=p;o.textContent=p;
+        if(state.goaliePlan[q]===p)o.selected=true;
+        sel.append(o);
+      });
+      sel.disabled=!canEdit();
+      sel.onchange=()=>{
+        if(!guardEdit())return;
+        pushUndo("goalie plan");
+        state.goaliePlan[q]=sel.value;
+        if(q===state.quarter && state.elapsed===q*QLEN) applyQuarterGoalie();
+        actionSave();renderAll();
+      };
+      card.append(tag,sel);box.append(card);
+    }
+  }
+  function renderGameGoalieStrip(){
+    const box=$("gameGoalieStrip");
+    if(!box)return;
+    box.innerHTML="";
+    for(let q=0;q<4;q++){
+      const c=document.createElement("div");c.className="goalie-q"+(q===state.quarter?" current":"");
+      c.innerHTML='<div class="qtag">Quarter '+(q+1)+'</div><div class="gname">'+short(state.goaliePlan[q]||"Not set")+'</div>';
+      box.append(c);
+    }
+  }
+
+  function buildPlan(){
+    if(!guardEdit())return;
+    state.opponent=$("opponent").value.trim()||"Opponent"; state.homeAway=$("homeAway").value;
+    const pool=activePool();if(pool.length<5){alert("You need at least 5 available players.");return}
+    pushUndo("build plan");
+    const stats=seasonStats();
+    let eligible=pool.filter(p=>state.gkPref[p]!=="no");
+    if(!eligible.length){alert("At least one available player must be allowed to play goalie.");return}
+    let plannedCounts=Object.fromEntries(roster.map(p=>[p,0]));
+    state.goaliePlan=[];
+    for(let q=0;q<4;q++){
+      const ranked=[...eligible].sort((a,b)=>{
+        const pa=(state.gkPref[a]==="prefer"?10:0)+(stats[a].gkQ*2)+plannedCounts[a];
+        const pb=(state.gkPref[b]==="prefer"?10:0)+(stats[b].gkQ*2)+plannedCounts[b];
+        return pa-pb || stats[a].minutes-stats[b].minutes;
+      });
+      const pick=ranked[0]; state.goaliePlan.push(pick); plannedCounts[pick]++;
+    }
+    const gk=state.goaliePlan[0];
+    const field=pool.filter(p=>p!==gk).sort((a,b)=>stats[a].minutes-stats[b].minutes).slice(0,4);
+    state.lineup={GK:gk,LB:field[0]||null,RB:field[1]||null,M:field[2]||null,F:field[3]||null};
+    state.planBuilt=true; state.suggestedSub=null;state.nextSubAt=SUBINT;actionSave();renderAll();showTab("game");setStatus("Game plan built. Review the field, then start the clock.");
+  }
+
+  function renderGame(){
+    $("gameLabel").textContent="Team 71 vs "+state.opponent;
+    $("oppName").textContent=state.opponent;$("ourScore").textContent=state.ourScore;$("theirScore").textContent=state.theirScore;$("quickUs").textContent=state.ourScore;$("quickThem").textContent=state.theirScore;
+    $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+" of 4</strong>";
+    $("timer").textContent=fmt(state.elapsed);$("startPauseBtn").textContent=state.running?"Pause":(state.elapsed?"Resume":"Start");
+    const jersey=state.homeAway==="home"?"home":"away";
+    const positions={F:"posF",LB:"posLB",RB:"posRB",M:"posM",GK:"posGK"};
+    Object.entries(positions).forEach(([slot,id])=>{
+      const p=state.lineup[slot],el=$(id);el.innerHTML='<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+'</div>';
+      el.onclick=()=>{if(slot==="GK"){return}if(state.selectedBench)makeManualSub(state.selectedBench,slot)};
+    });
+    renderBench();renderStatusPlayers();renderMinutes();renderGoals();renderSubSuggestion();
+  }
+
+  function renderBench(){
+    const targets=[$("benchSide")];
+    targets.forEach(box=>box.innerHTML="");
+    const list=bench();
+    if(!list.length){
+      targets.forEach(box=>box.innerHTML='<div class="muted small">No active bench players.</div>');
+      return;
+    }
+    list.forEach(p=>{
+      targets.forEach(box=>{
+        const b=document.createElement("button");
+        b.className="bench-btn"+(state.selectedBench===p?" selected":"");
+        b.innerHTML='<span>'+p+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
+        b.disabled=!canEdit();b.onclick=()=>{if(!guardEdit())return;state.selectedBench=state.selectedBench===p?null:p;renderBench()};
+        box.append(b);
+      });
+    });
+  }
+
+  function renderStatusPlayers(){
+    const box=$("statusPlayers");box.innerHTML="";
+    roster.filter(p=>state.present[p]).forEach(p=>{
+      const d=document.createElement("div");d.className="row";d.style.padding="6px 0";d.style.borderBottom="1px solid var(--line)";
+      const left=document.createElement("span");left.innerHTML='<span class="small">'+p+'</span>';
+      const controls=document.createElement("div");controls.className="controls";
+      [["Available","available"],["Rest","rest"],["Out","out"]].forEach(([t,v])=>{const b=document.createElement("button");b.textContent=t;b.style.minHeight="34px";b.style.padding="5px 8px";if(state.availability[p]===v)b.className=v==="out"?"danger":v==="rest"?"warn":"good";b.disabled=!canEdit();b.onclick=()=>setAvailability(p,v);controls.append(b)});
+      d.append(left,controls);box.append(d);
+    });
+  }
+
+  function setAvailability(p,v){
+    pushUndo("player status");state.availability[p]=v;
+    if(v!=="available"){
+      const slot=slots.find(s=>state.lineup[s]===p);
+      if(slot){state.lineup[slot]=null;autoReplaceEmpty(slot)}
+      if(state.selectedBench===p)state.selectedBench=null;
+      state.goaliePlan=state.goaliePlan.map((g,i)=>g===p&&i>=state.quarter?pickReplacementGoalie(i,p):g);
+    }
+    actionSave();renderAll();setStatus(p+" marked "+v+".");
+  }
+
+  function pickReplacementGoalie(q,exclude){
+    const pool=activePool().filter(p=>p!==exclude&&state.gkPref[p]!=="no");
+    if(!pool.length)return"";
+    return pool.sort((a,b)=>state.gk[a]-state.gk[b])[0];
+  }
+  function autoReplaceEmpty(slot){
+    const b=bench().sort((a,b)=>state.play[a]-state.play[b]); if(!b.length)return;
+    if(slot==="GK"){const g=state.goaliePlan[state.quarter];if(g&&activePool().includes(g)){state.lineup.GK=g;return}}
+    state.lineup[slot]=b[0];
+  }
+
+  function makeManualSub(incoming,slot){
+    if(!incoming||slot==="GK")return;pushUndo("manual substitution");
+    const outgoing=state.lineup[slot];state.lineup[slot]=incoming;state.selectedBench=null;state.suggestedSub=null;
+    actionSave();renderAll();setStatus(incoming+" in for "+outgoing+".");
+  }
+
+  function suggestSub(force=false){
+    const b=bench().sort((a,b)=>state.play[a]-state.play[b]);
+    const fieldSlots=["LB","RB","M","F"]
+      .map(s=>({slot:s,p:state.lineup[s]}))
+      .filter(x=>x.p);
+
+    if(!b.length || !fieldSlots.length){
+      state.suggestedSub=null;
+      return;
+    }
+    if(!force && state.suggestedSub) return;
+
+    // Normal U8 rotation: with 8 available players, 3 are on the bench.
+    // Bring all 3 bench players in and remove the 3 field players with the
+    // most playing time. The goalkeeper remains in goal for the full quarter.
+    const incoming=[...b].slice(0,Math.min(3,b.length));
+    const outgoing=[...fieldSlots]
+      .sort((a,b)=>state.play[b.p]-state.play[a.p])
+      .slice(0,incoming.length);
+
+    state.suggestedSub={
+      incoming,
+      outgoingPlayers: outgoing.map(x=>x.p),
+      outgoingSlots: outgoing.map(x=>x.slot)
+    };
+  }
+
+  function renderSubSuggestion(){
+    const until=Math.max(0,state.nextSubAt-state.elapsed);
+    $("subCountdown").textContent=fmt(until);
+    suggestSub(false);
+
+    if(!state.suggestedSub){
+      $("subSuggestion").textContent="No substitution needed.";
+      $("acceptSubBtn").disabled=true;
+      return;
+    }
+
+    const s=state.suggestedSub;
+    const pairs=s.incoming.map((p,i)=>p+" IN → "+s.outgoingPlayers[i]+" OUT");
+    $("subSuggestion").innerHTML =
+      "<strong>"+s.incoming.length+"-player rotation</strong><br>" +
+      pairs.join("<br>");
+    $("acceptSubBtn").disabled=false;
+    $("acceptSubBtn").textContent = s.incoming.length===1 ? "Make Suggested Sub" : "Make "+s.incoming.length+"-Player Sub";
+  }
+
+  function acceptSuggestedSub(){
+    if(!guardEdit())return;
+    if(!state.suggestedSub) return;
+    pushUndo("scheduled rotation");
+    const s=state.suggestedSub;
+
+    // Replace each selected field slot with one bench player.
+    s.outgoingSlots.forEach((slot,i)=>{
+      if(s.incoming[i]) state.lineup[slot]=s.incoming[i];
+    });
+
+    const desc=s.incoming.map((p,i)=>p+" for "+s.outgoingPlayers[i]).join(", ");
+    state.suggestedSub=null;
+    state.nextSubAt+=SUBINT;
+    save();
+    renderAll();
+    setStatus("Rotation completed: "+desc+".");
+  }
+
+  function renderGoals(){
+    const box=$("goalScorers");box.innerHTML="";
+    onField().forEach(p=>{const b=document.createElement("button");b.textContent="⚽ "+short(p)+" ("+(state.goals[p]||0)+")";b.disabled=!canEdit();b.onclick=()=>teamGoal(p);box.append(b)});
+  }
+  function teamGoal(p){if(!guardEdit())return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(state.elapsed)});actionSave();renderAll();setStatus("Goal: "+p)}
+  function oppGoal(){if(!guardEdit())return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(state.elapsed)});actionSave();renderAll();setStatus("Opponent goal recorded.")}
+  function undoLastGoal(){
+    const i=[...state.goalLog].map((_,i)=>i).pop();if(i==null){setStatus("No goal to undo.");return}
+    pushUndo("undo last goal");const g=state.goalLog.pop();if(g.type==="team"){state.ourScore=Math.max(0,state.ourScore-1);state.goals[g.player]=Math.max(0,state.goals[g.player]-1)}else state.theirScore=Math.max(0,state.theirScore-1);save();renderAll()
+  }
+
+  function renderMinutes(){
+    const b=$("liveMinutes");b.innerHTML="";roster.filter(p=>state.present[p]||state.play[p]>0).forEach(p=>{const tr=document.createElement("tr");tr.innerHTML="<td>"+short(p)+"</td><td>"+minfmt(state.play[p])+"</td><td>"+minfmt(state.gk[p])+"</td><td>"+state.goals[p]+"</td>";b.append(tr)})
+  }
+
+  function setStatus(t){$("status").textContent=t}
+  function startPause(){
+    if(!guardEdit())return;
+    if(state.ended)return;
+    if(onField().length!==5){setStatus("Need 5 active players on the field.");return}
+    state.running=!state.running;if(state.running){state.lastTick=Date.now();if(!timerHandle)timerHandle=setInterval(tick,500)}actionSave();renderGame();cloudPush()
+  }
+  function tick(){
+    if(!state.running)return;
+    const now=Date.now(),d=Math.min(1.5,(now-state.lastTick)/1000);state.lastTick=now;
+    onField().forEach(p=>state.play[p]+=d);if(state.lineup.GK)state.gk[state.lineup.GK]+=d;state.elapsed+=d;
+    if(state.elapsed>=state.nextSubAt && state.nextSubAt<(state.quarter+1)*QLEN){state.running=false;suggestSub(true);if(navigator.vibrate)navigator.vibrate([120,80,120]);setStatus("6-minute rotation: swap the 3 bench players in, or adjust manually.");cloudPush();}
+    const qBoundary=(state.quarter+1)*QLEN;
+    if(state.elapsed>=qBoundary && state.quarter<3){state.elapsed=qBoundary;state.running=false;showQuarterTransition();actionSave();renderAll();return}
+    if(state.elapsed>=GLEN){state.elapsed=GLEN;endGame();return}
+    actionSave();renderGame()
+  }
+
+  function showQuarterTransition(){
+    const nq=state.quarter+1,nextGK=state.goaliePlan[nq]||"Not assigned";
+    $("quarterTransition").innerHTML="<p><strong>Next goalie:</strong> "+nextGK+"</p><p class='muted small'>Goalkeepers rotate every quarter. Starting the next quarter will move the planned goalie into goal and rebuild the four field spots to keep minutes balanced.</p>";
+    $("quarterModal").classList.add("show");
+  }
+  function startNextQuarter(){
+    pushUndo("quarter transition");state.quarter=Math.min(3,state.quarter+1);state.nextSubAt=state.quarter*QLEN+SUBINT;
+    applyQuarterGoalie();balanceLineup();$("quarterModal").classList.remove("show");state.running=true;state.lastTick=Date.now();if(!timerHandle)timerHandle=setInterval(tick,500);save();renderAll()
+  }
+  function applyQuarterGoalie(){
+    const g=state.goaliePlan[state.quarter];if(!g||!activePool().includes(g))return;
+    const old=state.lineup.GK;const slot=slots.find(s=>state.lineup[s]===g);
+    if(slot&&slot!=="GK")state.lineup[slot]=old;else if(old&&!onField().includes(g)){const open=["LB","RB","M","F"].find(s=>!state.lineup[s]);if(open)state.lineup[open]=old}
+    state.lineup.GK=g;
+  }
+  function balanceLineup(){
+    const g=state.lineup.GK,pool=activePool().filter(p=>p!==g).sort((a,b)=>state.play[a]-state.play[b]).slice(0,4);
+    ["LB","RB","M","F"].forEach((s,i)=>state.lineup[s]=pool[i]||null);state.suggestedSub=null;
+  }
+  function nextQuarter(){if(!guardEdit())return;
+    if(state.quarter>=3)return;state.running=false;state.elapsed=(state.quarter+1)*QLEN;showQuarterTransition();save();renderAll()
+  }
+
+  function endGame(){if(!guardEdit())return;
+    if(state.ended)return;if(!confirm("End this game and save it to season history?"))return;
+    state.running=false;state.ended=true;
+    const gkQuarters=Object.fromEntries(roster.map(p=>[p,0]));state.goaliePlan.forEach(g=>{if(g)gkQuarters[g]++});
+    seasonHistory.push({date:new Date().toISOString(),opponent:state.opponent,homeAway:state.homeAway,ourScore:state.ourScore,theirScore:state.theirScore,play:state.play,gkQuarters,goals:state.goals,goalLog:state.goalLog});
+    localStorage.setItem(HIST,JSON.stringify(seasonHistory));actionSave();renderAll();setStatus("Game saved to season history.");showTab("history")
+  }
+
+
+  function renderShared(){
+    if($("shareCodeDisplay")) $("shareCodeDisplay").textContent=state.shareCode||"—";
+    if($("shareRole")) $("shareRole").value=state.shareRole||"coach";
+    if(state.shareCode) setSyncStatus("live",state.shareRole==="viewer"?"Shared • viewing live":"Shared • connected");
+    else setSyncStatus("","Local only");
+
+    // Viewer mode should not expose action buttons.
+    const ids=["buildPlanBtn","startPauseBtn","nextQuarterBtn","endGameBtn","undoBtn","acceptSubBtn","changeSubBtn","oppGoalBtn","undoGoalBtn","allAvailableBtn"];
+    ids.forEach(id=>{const el=$(id);if(el)el.disabled=!canEdit()});
+  }
+
+  function renderHistory(){
+    const h=$("historyList");h.innerHTML=seasonHistory.length?"":"<div class='muted small'>No completed games yet.</div>";
+    [...seasonHistory].reverse().forEach(g=>{const d=document.createElement("div");d.className="history-game";const dt=new Date(g.date);d.innerHTML="<strong>Team 71 "+g.ourScore+" – "+g.theirScore+" "+g.opponent+"</strong><div class='muted small'>"+dt.toLocaleDateString()+" • "+(g.homeAway==="home"?"Home / Red":"Away / Blue")+"</div>";h.append(d)});
+    const s=seasonStats(),tb=$("seasonTotals");tb.innerHTML="";roster.forEach(p=>{const tr=document.createElement("tr");tr.innerHTML="<td>"+p+"</td><td>"+s[p].minutes.toFixed(1).replace(".0","")+"</td><td>"+s[p].gkQ+"</td><td>"+s[p].goals+"</td>";tb.append(tr)})
+  }
+
+  function exportBackup(){
+    const blob=new Blob([JSON.stringify({version:5,history:seasonHistory,current:state},null,2)],{type:"application/json"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="team71-backup.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)
+  }
+  $("importFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(Array.isArray(j.history))seasonHistory=j.history;if(j.current)state={...fresh(),...j.current,running:false,lastTick:null};localStorage.setItem(HIST,JSON.stringify(seasonHistory));actionSave();renderAll();alert("Backup restored.")}catch(err){alert("That backup file could not be read.")}};r.readAsText(f)});
+
+  $("opponent").addEventListener("input",()=>{state.opponent=$("opponent").value;save()});$("homeAway").addEventListener("change",()=>{state.homeAway=$("homeAway").value;save()});
+  $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});save();renderAll()};
+  $("buildPlanBtn").onclick=buildPlan;$("startPauseBtn").onclick=startPause;$("nextQuarterBtn").onclick=nextQuarter;$("endGameBtn").onclick=endGame;$("undoBtn").onclick=undo;
+  $("acceptSubBtn").onclick=acceptSuggestedSub;$("changeSubBtn").onclick=()=>{state.suggestedSub=null;suggestSub(true);save();renderSubSuggestion()};
+  $("oppGoalBtn").onclick=oppGoal;$("undoGoalBtn").onclick=undoLastGoal;$("startNextQuarterBtn").onclick=startNextQuarter;$("closeQuarterBtn").onclick=()=>$("quarterModal").classList.remove("show");
+  $("exportBtn").onclick=exportBackup;
+
+  $("createShareBtn").onclick=()=>{if(!guardEdit())return;createSharedGame()};
+  $("joinShareBtn").onclick=joinSharedGame;
+  $("leaveShareBtn").onclick=leaveSharedGame;
+
+
+  function renderAll(){renderSetup();renderGoaliePlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared()}
+  load();renderAll();startCloudPolling();
+
+  if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
+})();
+</script>
+</body>
+</html>
