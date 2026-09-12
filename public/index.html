@@ -89,7 +89,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v13 FINAL</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v15 QA FINAL</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -97,6 +97,7 @@
     <button data-tab="setup" class="active">Pregame</button>
     <button data-tab="game">Game</button>
     <button data-tab="history">History</button>
+    <button data-tab="audit">Audit</button>
     <button data-tab="backup">Backup</button>
   </div>
 
@@ -132,7 +133,7 @@
           <strong>Shared Game</strong>
           <div class="muted small" style="margin-top:4px">Use the same game code on both phones. Maureen can join as a viewer or as a second coach.</div>
         </div>
-        <div id="syncStatus" class="small"><span class="sync-dot" id="syncDot"></span><span id="syncText">Local only</span></div>
+        <div id="syncStatus" class="small"><span class="sync-dot" id="syncDot"></span><span id="syncText">Local only</span><span id="syncAge" class="muted"></span></div>
       </div>
       <div class="shared-grid" style="margin-top:10px">
         <div>
@@ -141,6 +142,7 @@
           <div class="controls">
             <button id="createShareBtn">Create Shared Game</button>
             <button id="leaveShareBtn">Leave Shared Game</button>
+            <button id="connectionTestBtn">Connection Test</button>
           </div>
         </div>
         <div>
@@ -267,6 +269,20 @@
     <div class="card"><strong>Season Totals</strong><div style="overflow:auto;margin-top:8px"><table><thead><tr><th>Player</th><th>Minutes</th><th>GK Qtrs</th><th>Goals</th></tr></thead><tbody id="seasonTotals"></tbody></table></div></div>
   </section>
 
+
+  <section id="audit" class="panel">
+    <div class="card">
+      <div class="row">
+        <div>
+          <strong>Live Audit Log</strong>
+          <div class="muted small">Shared activity from both coaches. Newest entries first.</div>
+        </div>
+        <button id="refreshAuditBtn">Refresh</button>
+      </div>
+      <div id="auditList" style="margin-top:10px"></div>
+    </div>
+  </section>
+
   <section id="backup" class="panel">
     <div class="card">
       <strong>Backup / Restore</strong>
@@ -307,6 +323,9 @@
   let lastAlertKey="";
   let activeGameCache=null;
   let historyLoadedFromCloud=false;
+  let auditEntries=[];
+  let auditPollHandle=null;
+  let activePollHandle=null;
 
   function fresh(){
     return {
@@ -321,7 +340,7 @@
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,lastTick:null,
-      shareCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
+      shareCode:"", lastAuditCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
       timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, soundEnabled:true
     };
   }
@@ -427,6 +446,7 @@
     await releaseWakeLock();
 
     if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+    if(auditPollHandle){clearInterval(auditPollHandle);auditPollHandle=null}
 
     try{
       await fetch("/api/active",{method:"DELETE"});
@@ -500,6 +520,7 @@
     await cloudPull();
     await loadCloudHistory();
     startCloudPolling();
+    startAuditPolling();
     renderAll();
     showTab("game");
     setStatus(role==="viewer" ? "Joined active game as Viewer." : "Joined active game as Coach.");
@@ -522,6 +543,7 @@
       await releaseWakeLock();
 
       if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+      if(auditPollHandle){clearInterval(auditPollHandle);auditPollHandle=null}
       save();
 
       activeGameCache=null;
@@ -669,12 +691,114 @@
     }
   }
 
+
+  async function runConnectionTest(){
+    const btn=$("connectionTestBtn");
+    if(btn)btn.disabled=true;
+    try{
+      const r=await fetch("/api/health",{cache:"no-store"});
+      if(!r.ok)throw new Error();
+      const j=await r.json();
+      if(!j.ok)throw new Error();
+      if(state.shareCode){
+        const g=await fetch("/api/game/"+encodeURIComponent(state.shareCode),{cache:"no-store"});
+        if(!g.ok)throw new Error();
+      }
+      alert(state.shareCode?"Connection OK: Cloudflare, D1, and the shared game are reachable.":"Connection OK: Cloudflare and D1 are reachable.");
+    }catch(e){
+      alert("Connection test failed. Check Wi-Fi/cellular and the Cloudflare deployment.");
+    }finally{
+      if(btn)btn.disabled=false;
+    }
+  }
+
+  async function addAudit(action, detail=""){
+    if(!state.shareCode) return;
+    try{
+      await fetch("/api/audit/"+encodeURIComponent(state.shareCode),{
+        method:"POST",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({
+          clientId:CLIENT_ID,
+          action,
+          detail,
+          quarter:state.quarter+1,
+          elapsed:displayElapsed()
+        })
+      });
+    }catch(e){}
+  }
+
+  async function loadAudit(){
+    const box=$("auditList");
+    if(!box) return;
+
+    const auditCode=state.shareCode||state.lastAuditCode;
+    if(!auditCode){
+      box.innerHTML="<div class='muted small'>No shared game is connected.</div>";
+      return;
+    }
+
+    try{
+      const r=await fetch("/api/audit/"+encodeURIComponent(auditCode),{cache:"no-store"});
+      if(!r.ok) throw new Error("audit fetch failed");
+      auditEntries=(await r.json()).entries||[];
+      renderAudit();
+    }catch(e){
+      box.innerHTML="<div class='muted small'>Audit log temporarily unavailable.</div>";
+    }
+  }
+
+  function renderAudit(){
+    const box=$("auditList");
+    if(!box) return;
+    box.innerHTML="";
+    if(!auditEntries.length){
+      box.innerHTML="<div class='muted small'>No activity recorded yet.</div>";
+      return;
+    }
+
+    auditEntries.forEach(a=>{
+      const d=document.createElement("div");
+      d.className="history-game";
+      const when=new Date(Number(a.created_at||0)).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
+      d.innerHTML="<div class='row'><strong>"+escapeHtml(a.action||"Activity")+"</strong><span class='pill'>"+when+"</span></div>"+
+        "<div class='small' style='margin-top:3px'>Q"+Number(a.quarter||1)+" • "+fmt(Number(a.elapsed||0))+
+        (a.detail ? " • "+escapeHtml(a.detail) : "")+"</div>";
+      box.append(d);
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+  }
+
+  function startActivePolling(){
+    if(activePollHandle) clearInterval(activePollHandle);
+    activePollHandle=setInterval(()=>{ if(!state.shareCode) fetchActiveGame(); },5000);
+  }
+
+  function startAuditPolling(){
+    if(auditPollHandle) clearInterval(auditPollHandle);
+    if(state.shareCode){
+      auditPollHandle=setInterval(loadAudit,3000);
+      loadAudit();
+    }
+  }
+
   function randomGameCode(){
     const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let s="T71";
     for(let i=0;i<4;i++) s+=chars[Math.floor(Math.random()*chars.length)];
     return s;
   }
+  function updateSyncAge(){
+    const el=$("syncAge");
+    if(!el)return;
+    if(!state.shareCode||!state.lastCloudUpdate){el.textContent="";return}
+    el.textContent=" • "+Math.max(0,Math.floor((Date.now()-Number(state.lastCloudUpdate))/1000))+"s";
+  }
+
   function setSyncStatus(mode,text){
     const dot=$("syncDot"), t=$("syncText");
     if(!dot||!t)return;
@@ -690,26 +814,47 @@
 
   async function cloudPush(domains=["all"],activate=false){
     if(applyingRemote || !state.shareCode || state.shareRole==="viewer") return;
-    try{
-      const payload=cloudPayload();
-      const r=await fetch("/api/game/"+encodeURIComponent(state.shareCode),{
-        method:"PUT",
-        headers:{"content-type":"application/json"},
-        body:JSON.stringify({state:payload,changedDomains:domains,clientId:CLIENT_ID,activate})
-      });
-      if(r.status===409){
+
+    // Snapshot the exact change at click time. If the server is busy, retry
+    // THIS patch rather than replacing it with a later cloud pull.
+    const code=state.shareCode;
+    const payload=cloudPayload();
+
+    for(let attempt=0; attempt<3; attempt++){
+      try{
+        const r=await fetch("/api/game/"+encodeURIComponent(code),{
+          method:"PUT",
+          headers:{"content-type":"application/json"},
+          body:JSON.stringify({
+            state:payload,
+            changedDomains:domains,
+            clientId:CLIENT_ID,
+            activate
+          })
+        });
+
+        if(r.status===409){
+          await new Promise(res=>setTimeout(res,120*(attempt+1)));
+          continue;
+        }
+
+        if(!r.ok) throw new Error("sync failed");
+
+        // IMPORTANT: do not advance local syncVersion from the PUT response.
+        // Another coach may have changed a different domain just before this
+        // write. Pull the merged server state so those changes are not skipped.
+        state.lastCloudUpdate=Date.now();
+        setSyncStatus("live","Shared • syncing");
         await cloudPull();
-        setTimeout(()=>cloudPush(domains),150);
+        setSyncStatus("live","Shared • synced");
         return;
+      }catch(e){
+        if(attempt===2){
+          setSyncStatus("err","Shared • sync error");
+          return;
+        }
+        await new Promise(res=>setTimeout(res,120*(attempt+1)));
       }
-      if(!r.ok) throw new Error("sync failed");
-      const data=await r.json();
-      state.syncVersion=data.syncVersion||state.syncVersion;
-      state.lastCloudUpdate=Date.now();
-      localStorage.setItem(KEY,JSON.stringify({...state,lastTick:null}));
-      setSyncStatus("live","Shared • synced");
-    }catch(e){
-      setSyncStatus("err","Shared • sync error");
     }
   }
 
@@ -725,6 +870,7 @@
         state.timerOwnerId="";
         state.awaitingQuarterTransition=false;
         if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+        if(auditPollHandle){clearInterval(auditPollHandle);auditPollHandle=null}
         save();
         setSyncStatus("","Shared game ended");
         renderAll();
@@ -776,6 +922,7 @@
     await fetchActiveGame();
     await loadCloudHistory();
     startCloudPolling();
+    startAuditPolling();
     renderAll();
   }
   async function joinSharedGame(){
@@ -791,6 +938,7 @@
   function leaveSharedGame(){
     state.shareCode="";state.shareRole="coach";state.syncVersion=0;
     if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+    if(auditPollHandle){clearInterval(auditPollHandle);auditPollHandle=null}
     save();renderAll();setSyncStatus("","Local only");
   }
   function canEdit(){
@@ -816,11 +964,15 @@
   function undo(){const u=undoStack.pop();if(!u){setStatus("Nothing to undo.");return} state=u.state;actionSave(["all"]);renderAll();setStatus("Undid: "+u.label)}
 
   document.querySelectorAll(".tabs button").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
-  function showTab(id){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===id));if(id==="history")renderHistory()}
+  function showTab(id){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===id));if(id==="history")renderHistory();if(id==="audit")loadAudit()}
 
   function seasonStats(){
     const s=Object.fromEntries(roster.map(p=>[p,{minutes:0,gkQ:0,goals:0}]));
-    seasonHistory.forEach(g=>roster.forEach(p=>{s[p].minutes+=(g.play?.[p]||0)/60;s[p].gkQ+=(g.gkQuarters?.[p]||0);s[p].goals+=(g.goals?.[p]||0)}));
+    seasonHistory.forEach(g=>roster.forEach(p=>{
+      s[p].minutes+=Number(g.play?.[p]||0)/60;
+      s[p].gkQ+=Number(g.gkQuarters?.[p]||0);
+      s[p].goals+=Number(g.goals?.[p]||0);
+    }));
     return s;
   }
 
@@ -901,7 +1053,7 @@
     const gk=state.goaliePlan[0];
     const field=pool.filter(p=>p!==gk).sort((a,b)=>stats[a].minutes-stats[b].minutes).slice(0,4);
     state.lineup={GK:gk,LB:field[0]||null,RB:field[1]||null,M:field[2]||null,F:field[3]||null};
-    state.planBuilt=true; state.suggestedSub=null;state.subDone=[false,false,false,false];state.nextSubAt=SUBINT;actionSave(["setup","lineup"]);renderAll();showTab("game");setStatus("Game plan built. Review the field, then start the clock.");
+    state.planBuilt=true; state.suggestedSub=null;state.subDone=[false,false,false,false];state.nextSubAt=SUBINT;actionSave(["setup","lineup"]);renderAll();showTab("game");addAudit("Game plan built","vs "+state.opponent);setStatus("Game plan built. Review the field, then start the clock.");
   }
 
   function renderGame(){
@@ -972,7 +1124,7 @@
 
     actionSave(["setup","lineup"]);
     renderAll();
-    setStatus(p+" marked "+v+".");
+    addAudit("Player status",p+" → "+v);setStatus(p+" marked "+v+".");
   }
 
   function pickReplacementGoalie(q,exclude){
@@ -987,9 +1139,29 @@
   }
 
   function makeManualSub(incoming,slot){
-    if(!incoming||slot==="GK")return;pushUndo("manual substitution");
-    const outgoing=state.lineup[slot];state.lineup[slot]=incoming;state.selectedBench=null;state.suggestedSub=null;
-    actionSave(["lineup"]);renderAll();setStatus(incoming+" in for "+outgoing+".");
+    if(!incoming||slot==="GK"||!guardEdit())return;
+
+    // Account for time up to the click, then re-anchor the SAME game clock.
+    // This changes player attribution only; it never jumps the game clock.
+    const wasRunning=state.running && state.timerOwnerId===CLIENT_ID;
+    if(wasRunning) advanceClockToNow();
+
+    pushUndo("manual substitution");
+    const outgoing=state.lineup[slot];
+    state.lineup[slot]=incoming;
+    state.selectedBench=null;
+    state.suggestedSub=null;
+
+    if(wasRunning){
+      state.clockAnchorElapsed=state.elapsed;
+      state.clockStartedAt=Date.now();
+      state.lastTick=Date.now();
+    }
+
+    actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup"]);
+    addAudit("Manual substitution",incoming+" IN for "+outgoing);
+    renderAll();
+    setStatus(incoming+" in for "+outgoing+".");
   }
 
   function suggestSub(force=false){
@@ -1052,17 +1224,32 @@
   function acceptSuggestedSub(){
     if(!guardEdit())return;
     if(!state.suggestedSub) return;
+
+    // An early scheduled sub must NOT move the game clock. Settle official
+    // time to this instant, make the lineup change, then re-anchor at the
+    // exact same elapsed game time.
+    const wasRunning=state.running && state.timerOwnerId===CLIENT_ID;
+    if(wasRunning) advanceClockToNow();
+
     pushUndo("scheduled rotation");
     const s=state.suggestedSub;
     s.outgoingSlots.forEach((slot,i)=>{
       if(s.incoming[i]) state.lineup[slot]=s.incoming[i];
     });
+
     const desc=s.incoming.map((p,i)=>p+" for "+s.outgoingPlayers[i]).join(", ");
     state.subDone[state.quarter]=true;
     state.suggestedSub=null;
-    state.clockAnchorElapsed=state.elapsed;
-    state.nextSubAt=(state.quarter+1)*QLEN+SUBINT;
-    actionSave(["lineup"]);
+    state.nextSubAt=currentQuarterBoundary();
+
+    if(wasRunning){
+      state.clockAnchorElapsed=state.elapsed;
+      state.clockStartedAt=Date.now();
+      state.lastTick=Date.now();
+    }
+
+    actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup"]);
+    addAudit("Scheduled substitution",desc);
     renderAll();
     setStatus("Rotation completed: "+desc+".");
   }
@@ -1081,6 +1268,7 @@
     state.suggestedSub=null;
     state.nextSubAt=currentQuarterBoundary();
     actionSave(["lineup"]);
+    addAudit("Rotation skipped","Marked scheduled rotation complete");
     renderAll();
     setStatus("Scheduled rotation marked complete. You can resume the clock.");
   }
@@ -1089,11 +1277,11 @@
     const box=$("goalScorers");box.innerHTML="";
     onField().forEach(p=>{const b=document.createElement("button");b.textContent="⚽ "+short(p)+" ("+(state.goals[p]||0)+")";b.disabled=!canEdit();b.onclick=()=>teamGoal(p);box.append(b)});
   }
-  function teamGoal(p){if(!guardEdit())return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);renderAll();setStatus("Goal: "+p)}
-  function oppGoal(){if(!guardEdit())return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);renderAll();setStatus("Opponent goal recorded.")}
+  function teamGoal(p){if(!guardEdit())return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Team 71 goal",p+" scored — "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Goal: "+p)}
+  function oppGoal(){if(!guardEdit())return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Opponent goal","Score "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Opponent goal recorded.")}
   function undoLastGoal(){
     const i=[...state.goalLog].map((_,i)=>i).pop();if(i==null){setStatus("No goal to undo.");return}
-    pushUndo("undo last goal");const g=state.goalLog.pop();if(g.type==="team"){state.ourScore=Math.max(0,state.ourScore-1);state.goals[g.player]=Math.max(0,state.goals[g.player]-1)}else state.theirScore=Math.max(0,state.theirScore-1);actionSave(["score"]);renderAll()
+    pushUndo("undo last goal");const g=state.goalLog.pop();if(g.type==="team"){state.ourScore=Math.max(0,state.ourScore-1);state.goals[g.player]=Math.max(0,state.goals[g.player]-1)}else state.theirScore=Math.max(0,state.theirScore-1);actionSave(["score"]);addAudit("Goal undone",g.type==="team"?(g.player+" goal removed"):"Opponent goal removed");renderAll()
   }
 
   function renderMinutes(){
@@ -1115,6 +1303,11 @@
       return;
     }
 
+    if(state.running && state.timerOwnerId && state.timerOwnerId!==CLIENT_ID){
+      setStatus("Clock is already running on the other coach's phone.");
+      return;
+    }
+
     // At/after the scheduled mid-quarter break, require the coach to finish
     // or explicitly skip the rotation before resuming.
     if(!state.running && !state.subDone[state.quarter] && state.elapsed>=currentSubBoundary() && state.elapsed<currentQuarterBoundary()){
@@ -1133,6 +1326,7 @@
       requestWakeLock();
       if(!timerHandle)timerHandle=setInterval(tick,250);
       setStatus("Game clock running.");
+      addAudit("Clock started/resumed","");
     }else{
       // Bring official elapsed/stats exactly up to now before pausing.
       advanceClockToNow();
@@ -1141,6 +1335,7 @@
       state.clockAnchorElapsed=state.elapsed;
       releaseWakeLock();
       setStatus("Game clock paused.");
+      addAudit("Clock paused","");
     }
 
     actionSave(["clock","stats"]);
@@ -1319,6 +1514,10 @@
     state.selectedBench=null;
 
     const preview=previewNextQuarterLineup();
+    if(Object.values(preview).filter(Boolean).length!==5){
+      setStatus("Need 5 available players before starting the next quarter.");
+      return;
+    }
     state.lineup={
       GK:preview.GK,
       LB:preview.LB,
@@ -1402,6 +1601,7 @@
     renderAll();
     setStatus("Saving game to season history…");
 
+    addAudit("Game ended","Final "+state.ourScore+"-"+state.theirScore+" vs "+state.opponent);
     const cloudSaved=await saveGameToCloud(game);
 
     try{
@@ -1409,9 +1609,11 @@
       if(state.shareCode) await fetch("/api/game/"+encodeURIComponent(state.shareCode),{method:"DELETE"});
     }catch(e){}
 
+    state.lastAuditCode=state.shareCode||state.lastAuditCode;
     state.shareCode="";
     state.syncVersion=0;
     if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
+    if(auditPollHandle){clearInterval(auditPollHandle);auditPollHandle=null}
     save();
 
     setStatus(cloudSaved ? "Game saved to shared season history." : "Game saved locally; cloud history will sync when online.");
@@ -1501,12 +1703,14 @@
   $("historyNewGameBtn").onclick=resetGame;
   $("deleteAllHistoryBtn").onclick=deleteAllHistory;
   $("refreshActiveBtn").onclick=fetchActiveGame;
+  $("refreshAuditBtn").onclick=loadAudit;
   $("clearActiveBtn").onclick=clearActiveGame;
   $("joinActiveViewerBtn").onclick=()=>joinActiveGame("viewer");
   $("joinActiveCoachBtn").onclick=()=>joinActiveGame("coach");
   $("soundToggle").onchange=e=>{state.soundEnabled=!!e.target.checked;unlockAudio();save()};
 
   $("createShareBtn").onclick=()=>{if(!guardEdit())return;createSharedGame()};
+  $("connectionTestBtn").onclick=runConnectionTest;
   $("joinShareBtn").onclick=joinSharedGame;
   $("leaveShareBtn").onclick=leaveSharedGame;
 
@@ -1522,7 +1726,9 @@
   fetchActiveGame();
   loadCloudHistory();
   startCloudPolling();
-  setInterval(()=>{ if(state.running && state.timerOwnerId!==CLIENT_ID) renderGame(); },250);
+  startAuditPolling();
+  startActivePolling();
+  setInterval(()=>{ if(state.running && state.timerOwnerId!==CLIENT_ID) renderGame(); updateSyncAge(); },250);
 
   if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
 })();

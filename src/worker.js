@@ -3,6 +3,21 @@ export default {
     const url = new URL(request.url);
 
     await ensureSchema(env);
+    if(Math.random()<0.02){
+      try{
+        await env.DB.prepare("DELETE FROM game_audit WHERE created_at < ?")
+          .bind(Date.now()-30*24*60*60*1000).run();
+      }catch(e){}
+    }
+
+    if (url.pathname === "/api/health" && request.method === "GET") {
+      try{
+        const row=await env.DB.prepare("SELECT 1 AS ok").first();
+        return json({ok:!!row,ts:Date.now()},200,{"cache-control":"no-store"});
+      }catch(e){
+        return json({ok:false,error:"D1 unavailable"},503,{"cache-control":"no-store"});
+      }
+    }
 
     // ACTIVE GAME DISCOVERY
     if (url.pathname === "/api/active" && request.method === "GET") {
@@ -103,6 +118,45 @@ export default {
       const id=decodeURIComponent(url.pathname.split("/").pop());
       await env.DB.prepare("DELETE FROM game_history WHERE id=?").bind(id).run();
       return json({ok:true});
+    }
+
+
+    // LIVE AUDIT LOG
+    if (url.pathname.startsWith("/api/audit/")) {
+      const code=url.pathname.split("/").pop().toUpperCase();
+      if (!/^[A-Z0-9]{4,10}$/.test(code)) return json({error:"Invalid game code"},400);
+
+      if(request.method==="GET"){
+        const rows=await env.DB.prepare(`
+          SELECT action, detail, quarter, elapsed, client_id, created_at
+          FROM game_audit
+          WHERE code=?
+          ORDER BY created_at DESC, id DESC
+          LIMIT 150
+        `).bind(code).all();
+        return json({entries:rows.results||[]},200,{"cache-control":"no-store"});
+      }
+
+      if(request.method==="POST"){
+        let body;
+        try{body=await request.json()}catch{return json({error:"Invalid JSON"},400)}
+        await env.DB.prepare(`
+          INSERT INTO game_audit
+            (code, action, detail, quarter, elapsed, client_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          code,
+          String(body.action||"Activity").slice(0,80),
+          String(body.detail||"").slice(0,300),
+          Number(body.quarter||1),
+          Number(body.elapsed||0),
+          String(body.clientId||"").slice(0,80),
+          Date.now()
+        ).run();
+        return json({ok:true});
+      }
+
+      return json({error:"Method not allowed"},405);
     }
 
     // LIVE GAME
@@ -261,6 +315,17 @@ async function ensureSchema(env){
     id TEXT PRIMARY KEY,
     played_at INTEGER NOT NULL,
     game_json TEXT NOT NULL
+  )`).run();
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS game_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    quarter INTEGER NOT NULL DEFAULT 1,
+    elapsed REAL NOT NULL DEFAULT 0,
+    client_id TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
   )`).run();
 }
 

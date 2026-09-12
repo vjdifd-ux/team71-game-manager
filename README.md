@@ -109,3 +109,19 @@ The D1 `game_state` table is created automatically by the Worker on first use.
 - The exact previewed lineup is the one applied when **Start Quarter With This Lineup** is pressed.
 - Selected bench state is cleared at the quarter transition to prevent an accidental immediate substitution.
 - Manual field substitutions are disabled for Viewer mode and after the game has ended.
+
+
+## v14 emergency fixes
+
+- Fixed early substitutions changing/jumping the game clock.
+  - The clock is settled to the exact click time.
+  - Player-time attribution changes at that instant.
+  - The game clock is immediately re-anchored at the same elapsed time.
+- Fixed a two-coach synchronization race:
+  - A successful PUT no longer causes a phone to skip a concurrent update from the other coach.
+  - Every successful write immediately pulls the merged server state.
+  - Conflict retries preserve the original user action rather than overwriting it with a cloud pull.
+- Removed duplicate goal-scorer buttons.
+- Added a fifth **Audit** tab with a shared server-side event log.
+- Audit records goals, goal undo, substitutions, player status, clock start/pause, quarter starts, plan creation, and game end.
+- Audit refreshes automatically while connected and can be manually refreshed.
