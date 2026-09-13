@@ -1,135 +1,166 @@
-# Team 71 Game Manager
+# Team 71 Game Manager — v26 ROSTER
 
-Cloudflare Worker + static assets + D1 shared game state.
+East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
-## Cloudflare configuration
+A Cloudflare Worker with static assets and a D1 database, so two coaches' phones
+can run the same game at the same time. Works offline after the first load.
 
-- Worker name: `team71`
-- D1 binding: `DB`
-- D1 database: `team71-game-state`
-- D1 database ID: `d2545cc6-6d5f-4ac3-b75b-a38ddac63d89`
-- Static assets binding: `ASSETS`
+- **Live:** https://team71.vjdifd.workers.dev/
+- **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
+  thing that goes wrong
+- **What changed in v26:** see [`V26_ROSTER.md`](V26_ROSTER.md)
+- **Earlier changes:** [`V25_PRINT.md`](V25_PRINT.md), [`V24_SIDELINE.md`](V24_SIDELINE.md),
+  [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
 
-## Deploy with Cloudflare Git integration
+## Checking which version is live
 
-This repository is ready to connect directly to the existing Cloudflare Worker named `team71`.
+Under the title on the home screen:
 
-Cloudflare should use:
+```
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v26 ROSTER
+```
 
-- Production branch: `main`
-- Build command: leave blank
-- Deploy command: `npx wrangler deploy`
+Worth a glance before every game. If it does not say `v26 ROSTER`, the deploy
+did not land and you are running older code.
 
-The Worker name in `wrangler.json` is already `team71`, matching the Cloudflare Worker.
+---
 
-## Files
+## How a game day works
 
-- `src/worker.js` — API + D1 synchronization code
-- `public/` — Team 71 website/PWA files
-- `wrangler.json` — Worker, assets, and D1 configuration
-- `package.json` — Wrangler dependency and deploy scripts
+**Pregame tab**
 
-## Shared game
+1. Set the opponent and home/away, and who has snack today — she takes goalie
+   in Q4 by default. Everyone else is equally eligible for goalie; there's no
+   per-player preference to set.
+2. Set attendance for each girl. Marking someone Out here does the same thing
+   as marking her Out during the game: she comes off the field, her minutes
+   stop, any quarter where she was the planned goalie is reassigned right
+   away, and — if the game is already underway — you're asked who from the
+   bench should take her spot. **Rest** is different: it's a break, not gone
+   for the day, so it only affects the goalie plan if she was due in goal
+   *this* quarter — a future quarter's assignment (the snack player's Q4,
+   say) is left alone.
+3. Pick a goalie for each of the four quarters, or leave some blank.
+4. **Build Game Plan** — your manual choices are kept, the snack player fills
+   a blank Q4 if she's here, remaining blanks are filled in from season goalie
+   minutes, and the starting five is chosen by lowest season minutes. This is
+   committed to the shared game in one write, so the Q1 keeper on screen is
+   always the Q1 keeper on the field.
+5. **Print / Save Game Plan** — a one-page fallback record: opponent, snack,
+   a full-game rotation projected every 6 minutes (goalie, all four field
+   positions, and the bench), and everyone's attendance. Works before or
+   after Build Game Plan runs, and reflects whatever's current if you reopen
+   or hit Refresh later. Print it, Download it as a standalone HTML file, or
+   just screenshot it on a phone — worth doing before you leave the house in
+   case the app or the phone lets you down mid-game. Reachable from the Game
+   tab too (a **Game Plan** button), including for a Viewer's phone.
 
-One phone can create a shared game code. A second phone can join the same code as Coach or Viewer.
+**Sharing with the second phone**
 
-The D1 `game_state` table is created automatically by the Worker on first use.
+- Coach A taps **Create Shared Game**.
+- Coach B opens the app; the live game appears under *Active Team 71 Game* within
+  about ten seconds. Tap **Join as Coach** (can make changes) or **Join as
+  Viewer** (follows along, read-only).
+- Only the phone that started the clock owns it. The other phone cannot pause or
+  restart it, which is deliberate — one official clock.
+- Both phones can record goals and make substitutions. Changes are merged by
+  domain, so a substitution on one phone never disturbs the clock on the other.
+- A Viewer's phone shows one simplified page — score, clock, field, bench,
+  goalie rotation, and recent activity — instead of the coach's full tab set,
+  since there's nothing to edit on Pregame/History/Backup. A **Last sub**
+  banner stays on screen after every substitution so a name changing on the
+  field is never a silent surprise. A small bar at the top has **Game Plan**
+  (opens the same printable sheet) and **Leave Shared Game**, so a Viewer's
+  phone is never stuck with no way back to Pregame.
 
+**Game tab**
 
-## v9 fixes
+- The big timer is the **quarter** clock, resetting to 0:00 each quarter. Total
+  game time is underneath.
+- The clock stops only when you tap Pause, when a quarter ends, or when you tap
+  End Period. The 6:00 mark is a reminder, never a forced stop — the reminder
+  card starts flashing once you're past it and the rotation still isn't done.
+- **Sub In Whole Bench** brings every bench player on at once — fewest minutes
+  in, most minutes out, one for one — whenever you tap it. It's a suggestion,
+  never automatic: the clock keeps running and you make the swap when play
+  allows.
+- A player who comes off mid-rotation for an emergency (hurt, doesn't want to
+  play right now) doesn't get auto-subbed back in the moment you flip her back
+  to Available. Whoever covered for her keeps that spot until the current
+  rotation and the covering player's own next one are both done, so she isn't
+  yanked straight back out. A manual sub always overrides this.
+- To sub by hand: tap a sideline player, then tap any field position, including
+  goalie. Substitutions never move the game clock.
+- **End Period / Set Up Next Quarter** deliberately ends the period, moves the
+  clock to the quarter boundary, applies the next quarter's lineup, and waits for
+  you to press Start. This is the one button that does move the clock.
+- **End Game** saves the game to season history and closes the shared session.
 
-- New Game / Reset returns the current game to 0:00 while keeping season history.
-- 3-player rotation no longer blindly adds six minutes to the schedule.
-- The countdown now shows the next actual rotation event: the 6-minute sub or the quarter ending.
-- Sound alerts:
-  - 30-second warning before the 6-minute rotation
-  - 3-beep alert at 6:00
-  - 30-second warning before quarter end
-  - long buzzer at 12:00
-- Multiple Coach phones can now be connected concurrently.
-  - Shared updates are merged by domain (clock/stats, lineup, score, setup)
-  - The phone that starts/resumes the clock owns official time accumulation
-  - Another Coach can record goals, substitutions, or player status without overwriting the running clock
+**Test Speed** cycles 1× → 10× → 60×, changeable only while paused. At 60× a
+12-minute quarter takes about 12 real seconds — useful for walking through a full
+game before a match. It resets to 1× on New Game.
 
+---
 
-## v10 fixes
+## Cloudflare setup
 
-- Game history now persists in the shared D1 database, not only one phone's localStorage.
-- History can be deleted one game at a time or cleared completely.
-- Active shared game discovery:
-  - No code required for normal use.
-  - If Team 71 has an active shared game, it automatically appears on Pregame.
-  - Maureen can tap Join as Viewer or Join as Coach.
-- Shared sync polls every second.
-- Live clock/stat writes are less frequent to reduce conflicts.
-- Conflict responses automatically pull the newest state and retry.
+| | |
+| --- | --- |
+| Worker | `team71` |
+| D1 binding | `DB` |
+| D1 database | `team71-game-state` |
+| D1 database ID | `d2545cc6-6d5f-4ac3-b75b-a38ddac63d89` |
+| Assets binding | `ASSETS` |
 
+Tables (`game_state`, `active_game`, `game_history`, `game_audit`) are created
+automatically on the first API request.
 
-## v11 stale active-game fix
+## Layout
 
-- Added an explicit **Clear Active Game** button.
-- Active-game discovery now self-cleans ended games.
-- Paused/abandoned games older than 30 minutes are automatically removed.
-- Any active marker older than 12 hours is automatically removed.
-- New Game / Reset also clears the active-game marker.
-- End Game clears the team-wide active-game marker instead of relying on the local game code.
+```
+src/worker.js        API and D1 synchronisation
+public/index.html    the whole app — markup, styles, and logic in one file
+public/sw.js         service worker (offline shell; never caches /api/)
+public/manifest.json PWA manifest
+wrangler.json        Worker, assets and D1 configuration
+test/                121 tests — see below
+docs/history/        QA notes from v15 through v21
+```
 
+## API
 
-## v12 FINAL pre-game QA fixes
+| Endpoint | Methods | Purpose |
+| --- | --- | --- |
+| `/api/health` | GET | connectivity and D1 probe |
+| `/api/active` | GET, DELETE | which game is live right now |
+| `/api/game/<code>` | GET, PUT, DELETE | live shared game state |
+| `/api/plan/<code>` | PUT | atomic pregame goalie + lineup commit |
+| `/api/history` | GET, POST, DELETE | season history |
+| `/api/history/<id>` | DELETE | remove one saved game |
+| `/api/audit/<code>` | GET, POST | live activity feed |
 
-- Fixed the biggest synchronization issue: the old service worker cached `/api/` responses, which could make both phones repeatedly see stale game, history, and active-game data.
-- API requests are now network-only and never stored in Cache Storage.
-- Page navigation is network-first, so new GitHub deployments appear on the first reload.
-- New Game / Clear Active / End Game now delete the old live game session so a stale phone cannot recreate it.
-- Only **Create Shared Game** can mark a session active; ordinary sync writes cannot resurrect a cleared game.
-- Timer now uses a wall-clock anchor and screen Wake Lock when supported.
-- If the phone/browser pauses, playing time advances only to the next required substitution or quarter boundary, then stops there instead of silently over-counting.
-- Accidental early **Next Quarter** jumps are blocked.
-- Quarter breaks cannot accidentally resume the previous quarter.
-- Added **Skip / Mark Complete** for the rare case where the scheduled six-minute rotation is intentionally skipped.
-- If only five players are available, the app no longer pauses unnecessarily at six minutes.
-- History uses a stable game ID so repeated End Game attempts cannot duplicate the same game.
-- Old local-only history is migrated into D1 instead of being overwritten by an empty cloud history.
-- Actual goalkeeper time is used for season goalkeeper-quarter totals.
+A bulk `DELETE /api/history` requires `?confirm=DELETE-ALL`.
 
+## Tests
 
-### Final QA patch
-- Deleting an individual history record no longer allows another phone's stale local cache to re-upload it.
-- Offline/failed history saves are tracked as pending and retried; normal cloud history is authoritative.
-- A phone automatically detaches when the shared live session has been ended/deleted.
-- Viewer permissions can no longer accidentally re-enable game controls.
-- Imported backups never resume an old running clock automatically.
+```bash
+npm install
+npm test
+```
 
+121 tests, about 20 seconds, no network or Cloudflare account required.
 
-## v13 FINAL field/quarter UX
+- `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
+  `node:sqlite`: routing, domain merging, optimistic locking, the active-game
+  lifecycle, history and audit.
+- `test/app.test.mjs` — the real `index.html` loaded in jsdom, driven by clicking
+  buttons and changing selects, with `fetch` wired into the real Worker. Covers
+  the clock, substitutions, goalie rotation, quarter transitions, scoring, undo,
+  test speed, two phones sharing a game, and end-of-game history.
+- `test/harness.mjs` — jsdom setup plus a virtual clock, so a 48-minute game runs
+  in milliseconds.
+- `test/fixtures/v21-shipped-index.html` — the build that was actually live,
+  kept so several tests can demonstrate the old broken behaviour alongside the
+  fix. Do not edit it.
 
-- Player cumulative minutes now appear directly on the visual field next to each active player's position.
-- Quarter break now shows the entire next-quarter lineup before the clock starts.
-- The preview includes Goalkeeper, Forward, Left Back, Right Back, and Support/Mid.
-- The exact previewed lineup is the one applied when **Start Quarter With This Lineup** is pressed.
-- Selected bench state is cleared at the quarter transition to prevent an accidental immediate substitution.
-- Manual field substitutions are disabled for Viewer mode and after the game has ended.
-
-
-## v14 emergency fixes
-
-- Fixed early substitutions changing/jumping the game clock.
-  - The clock is settled to the exact click time.
-  - Player-time attribution changes at that instant.
-  - The game clock is immediately re-anchored at the same elapsed time.
-- Fixed a two-coach synchronization race:
-  - A successful PUT no longer causes a phone to skip a concurrent update from the other coach.
-  - Every successful write immediately pulls the merged server state.
-  - Conflict retries preserve the original user action rather than overwriting it with a cloud pull.
-- Removed duplicate goal-scorer buttons.
-- Added a fifth **Audit** tab with a shared server-side event log.
-- Audit records goals, goal undo, substitutions, player status, clock start/pause, quarter starts, plan creation, and game end.
-- Audit refreshes automatically while connected and can be manually refreshed.
-
-
-## v16 Goalie Hotfix
-- Build Plan now preserves valid manually-selected Q1–Q4 goalies instead of replacing them with automatic defaults.
-- Fixed quarter-transition off-by-one: the lineup previewed for the next quarter is now the exact lineup applied when that quarter starts.
-- Added emergency/manual goalie substitution: select a bench player, then tap the goalie on the field.
-- New Game explicitly clears Q1–Q4 goalie assignments and the starting lineup while preserving each player's GK eligibility preference.
-- Added Clear Goalies so the Q1–Q4 plan can be reset independently without resetting the whole game.
+Run `npm test` before deploying.
