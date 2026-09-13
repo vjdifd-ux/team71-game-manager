@@ -69,6 +69,9 @@
     .print-sheet table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:4px}
     .print-sheet th,.print-sheet td{border:1px solid #bbb;padding:4px 6px;text-align:left}
     .print-sheet th{background:#f1f5f9}
+    .print-sheet .schedule{font-size:.68rem}
+    .print-sheet .schedule th,.print-sheet .schedule td{padding:3px 4px}
+    @media print{.print-sheet .schedule{font-size:.62rem}}
     @media print{
       body *{visibility:hidden}
       #planPrintModal,#planPrintModal *{visibility:visible}
@@ -96,6 +99,8 @@
     body.viewer-mode .panel{display:none!important}
     body.viewer-mode #game.panel,body.viewer-mode #audit.panel{display:block!important}
     body.viewer-mode .coach-only{display:none!important}
+    .viewer-only{display:none}
+    body.viewer-mode .viewer-only{display:flex}
     .last-sub{background:#1e293b;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;display:none}
     .last-sub.show{display:block}
   
@@ -116,7 +121,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v25 PRINT</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v26 ROSTER</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -215,6 +220,10 @@
   </section>
 
   <section id="game" class="panel">
+    <div class="row viewer-only" id="viewerBar" style="align-items:center;background:#172554;border-radius:12px;padding:8px 12px;margin-bottom:10px">
+      <div class="small">Following as Viewer</div>
+      <div class="controls"><button id="viewerPlanBtn">Game Plan</button><button id="viewerLeaveBtn">Leave Shared Game</button></div>
+    </div>
     <div class="card">
       <div class="row">
         <div><div class="muted small" id="gameLabel">Team 71 vs Team 72</div><div class="score">Team 71 <span id="ourScore">0</span> – <span id="theirScore">0</span> <span id="oppName">Team 72</span></div></div>
@@ -351,9 +360,11 @@
     <div id="planPrintSheet" class="print-sheet"></div>
     <div class="controls no-print" style="margin-top:14px">
       <button class="primary" id="printPlanNowBtn">Print</button>
+      <button id="downloadPlanBtn">Download</button>
+      <button id="refreshPlanBtn">Refresh</button>
       <button id="closePlanPrintBtn">Close</button>
     </div>
-    <div class="muted small no-print" style="margin-top:8px">On a phone: use Print → Save as PDF, or just take a screenshot of the sheet above.</div>
+    <div class="muted small no-print" style="margin-top:8px">On a phone: use Print → Save as PDF, Download for a file you can share or open later, or just take a screenshot of the sheet above. Reopen or tap Refresh any time to bring it up to date.</div>
   </div>
 </div>
 
@@ -1287,15 +1298,52 @@
   }
 
   /**
-   * A one-page fallback record of the game plan — opponent, snack, goalies,
-   * starting lineup, and every player's attendance for the day. Meant to be
-   * printed, saved as a PDF, or just screenshotted on a phone before leaving
-   * the house, so a crashed app or a dead phone doesn't lose the plan.
+   * A full-game, every-6-minutes rotation projection: who's in goal, who's
+   * at each of the four field positions, and who's on the bench, for all 8
+   * half-quarters. This assumes a perfectly even rotation from kickoff — the
+   * same "lowest minutes in" rule the live fairness engine uses — so it's a
+   * plan, not a transcript; real subs, injuries, and manual changes during
+   * the actual game will diverge from it. It's meant as a paper fallback:
+   * if the app or the phone goes down, this is "keep rotating like this"
+   * rather than nothing at all.
+   */
+  function projectFullGameSchedule(){
+    const pool=activePool();
+    if(pool.length<5) return null;
+    const plan=computeGoaliePlan(pool,readGoaliePlannerSelections());
+    const minutes=Object.fromEntries(pool.map(p=>[p,0]));
+    const windows=[];
+
+    for(let q=0;q<4;q++){
+      const gk=(plan[q] && pool.includes(plan[q])) ? plan[q] : [...pool].sort((a,b)=>minutes[a]-minutes[b])[0];
+      for(let half=0;half<2;half++){
+        const eligible=pool.filter(p=>p!==gk);
+        const onField=[...eligible].sort((a,b)=>minutes[a]-minutes[b]).slice(0,4);
+        const benchNow=eligible.filter(p=>!onField.includes(p));
+        windows.push({
+          startSec:q*QLEN+half*SUBINT,
+          gk, LB:onField[0]||null, RB:onField[1]||null, M:onField[2]||null, F:onField[3]||null,
+          bench:benchNow
+        });
+        onField.forEach(p=>{minutes[p]+=SUBINT});
+        minutes[gk]+=SUBINT;
+      }
+    }
+    return windows;
+  }
+
+  /**
+   * A one-page fallback record of the game plan — opponent, snack, the
+   * projected full-game rotation, and every player's attendance for the
+   * day. Meant to be printed, saved as a PDF, or just screenshotted on a
+   * phone before leaving the house, so a crashed app or a dead phone
+   * doesn't lose the plan. Re-rendered fresh every time it's opened, so
+   * reopening it after any pregame change (or mid-game, after a rest or an
+   * attendance change) always reflects what's current.
    */
   function renderGamePlanPrint(){
     const box=$("planPrintSheet");
     if(!box)return;
-    const plan=readGoaliePlannerSelections();
     const dateStr=new Date().toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
     const jerseyLabel=state.homeAway==="home"?"Home — Red":"Away — Blue";
 
@@ -1306,21 +1354,27 @@
       return "<tr><td>"+escapeHtml(p)+snackTag+"</td><td>"+presentLabel+"</td><td>"+statusLabel+"</td></tr>";
     }).join("");
 
-    const goalieRow=plan.map((g,i)=>"Q"+(i+1)+": "+escapeHtml(g||"—")).join(" &nbsp;•&nbsp; ");
-
-    const lineupRow=state.planBuilt
-      ? ["GK","LB","RB","M","F"].map(s=>"<div><strong>"+posNames[s]+":</strong> "+escapeHtml(state.lineup[s]||"—")+"</div>").join("")
-      : "<div class='muted'>Not built yet — this reflects the current draft only.</div>";
+    const windows=projectFullGameSchedule();
+    const scheduleRows=windows
+      ? windows.map((w,i)=>
+          "<tr><td>Q"+(Math.floor(i/2)+1)+" • "+fmt(w.startSec)+"–"+fmt(w.startSec+SUBINT)+"</td>"+
+          "<td>"+escapeHtml(w.gk||"—")+"</td>"+
+          "<td>"+escapeHtml(w.LB||"—")+"</td>"+
+          "<td>"+escapeHtml(w.RB||"—")+"</td>"+
+          "<td>"+escapeHtml(w.M||"—")+"</td>"+
+          "<td>"+escapeHtml(w.F||"—")+"</td>"+
+          "<td>"+escapeHtml(w.bench.join(", ")||"—")+"</td></tr>"
+        ).join("")
+      : "<tr><td colspan='7' class='muted'>Need at least 5 available players to project a rotation.</td></tr>";
 
     box.innerHTML=
       "<h2>Team 71 vs "+escapeHtml(state.opponent||"Opponent")+"</h2>"+
       "<div class='muted'>"+dateStr+" • "+jerseyLabel+"</div>"+
       "<h3>Snack</h3>"+
       "<div>"+(state.snackPlayer?escapeHtml(state.snackPlayer)+" — plays goalie in Q4":"Not set")+"</div>"+
-      "<h3>Goalie Plan</h3>"+
-      "<div>"+goalieRow+"</div>"+
-      "<h3>Starting Lineup</h3>"+
-      lineupRow+
+      "<h3>Projected Rotation Plan</h3>"+
+      "<div class='muted' style='font-size:.75rem'>Assumes an even rotation from kickoff — the live fairness engine's own rule. Real substitutions may differ; reopen this sheet any time to re-project from the current roster.</div>"+
+      "<table class='schedule'><thead><tr><th>Time</th><th>GK</th><th>LB</th><th>RB</th><th>M</th><th>F</th><th>Bench</th></tr></thead><tbody>"+scheduleRows+"</tbody></table>"+
       "<h3>Attendance</h3>"+
       "<table><thead><tr><th>Player</th><th>Present</th><th>Status</th></tr></thead><tbody>"+attendanceRows+"</tbody></table>"+
       "<div class='muted' style='margin-top:10px;font-size:.75rem'>Printed "+new Date().toLocaleString()+"</div>";
@@ -1329,6 +1383,28 @@
   function openGamePlanPrint(){
     renderGamePlanPrint();
     $("planPrintModal").classList.add("show");
+  }
+
+  /** A standalone, self-contained HTML file of the current sheet — an actual downloadable file, not just a screenshot. */
+  function downloadGamePlanSheet(){
+    renderGamePlanPrint();
+    const html="<!doctype html><html><head><meta charset='utf-8'>"+
+      "<title>Team 71 Game Plan</title>"+
+      "<style>body{font-family:system-ui,-apple-system,sans-serif;background:#fff;color:#111;padding:16px;max-width:700px;margin:0 auto}"+
+      "h2{margin:0 0 2px 0}h3{margin:14px 0 4px 0;font-size:.95rem}.muted{color:#555}"+
+      "table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:4px}"+
+      "th,td{border:1px solid #bbb;padding:4px 6px;text-align:left}th{background:#f1f5f9}</style></head>"+
+      "<body>"+$("planPrintSheet").innerHTML+"</body></html>";
+    const blob=new Blob([html],{type:"text/html"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    const stamp=new Date().toISOString().slice(0,10);
+    a.href=url;
+    a.download="team71-gameplan-"+stamp+".html";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
   async function commitGamePlanAuthoritatively(){
@@ -1369,23 +1445,21 @@
     }
   }
 
-  async function buildPlan(){
-    if(!guardEdit())return;
-    state.opponent=$("opponent").value.trim()||"Opponent"; state.homeAway=$("homeAway").value;
-    const pool=activePool();if(pool.length<5){alert("You need at least 5 available players.");return}
-    pushUndo("build plan");
+  /**
+   * The goalie plan for all four quarters, given a pool of available players
+   * and whatever's already manually chosen. Shared by Build Game Plan and the
+   * printable full-game projection, so the two never disagree about who's
+   * supposed to be in goal when.
+   */
+  function computeGoaliePlan(pool,manualPlan){
     const stats=seasonStats();
-    let plannedCounts=Object.fromEntries(roster.map(p=>[p,0]));
-
-    // The visible dropdowns are the source of truth at the instant Build Game
-    // Plan is pressed. This guarantees Q1 on the field matches Q1 on screen.
-    const existingPlan=readGoaliePlannerSelections();
-    state.goaliePlan=["","","",""];
+    const plan=["","","",""];
+    const plannedCounts=Object.fromEntries(roster.map(p=>[p,0]));
 
     for(let q=0;q<4;q++){
-      const manual=existingPlan[q];
+      const manual=manualPlan[q];
       if(manual && pool.includes(manual)){
-        state.goaliePlan[q]=manual;
+        plan[q]=manual;
         plannedCounts[manual]++;
         continue;
       }
@@ -1393,7 +1467,7 @@
       // The snack player is the standing default for the last quarter, if
       // she's here today and nobody already picked someone else for it.
       if(q===3 && state.snackPlayer && pool.includes(state.snackPlayer)){
-        state.goaliePlan[q]=state.snackPlayer;
+        plan[q]=state.snackPlayer;
         plannedCounts[state.snackPlayer]++;
         continue;
       }
@@ -1404,9 +1478,22 @@
         return pa-pb || stats[a].minutes-stats[b].minutes;
       });
       const pick=ranked[0];
-      state.goaliePlan[q]=pick;
+      plan[q]=pick;
       plannedCounts[pick]++;
     }
+    return plan;
+  }
+
+  async function buildPlan(){
+    if(!guardEdit())return;
+    state.opponent=$("opponent").value.trim()||"Opponent"; state.homeAway=$("homeAway").value;
+    const pool=activePool();if(pool.length<5){alert("You need at least 5 available players.");return}
+    pushUndo("build plan");
+    const stats=seasonStats();
+
+    // The visible dropdowns are the source of truth at the instant Build Game
+    // Plan is pressed. This guarantees Q1 on the field matches Q1 on screen.
+    state.goaliePlan=computeGoaliePlan(pool,readGoaliePlannerSelections());
     const gk=state.goaliePlan[0];
     const field=pool.filter(p=>p!==gk).sort((a,b)=>stats[a].minutes-stats[b].minutes).slice(0,4);
     state.lineup={GK:gk,LB:field[0]||null,RB:field[1]||null,M:field[2]||null,F:field[3]||null};
@@ -1553,9 +1640,17 @@
     let vacatedSlot=null;
     const usable=state.present[p] && v==="available";
     if(!usable){
-      // Only re-plan quarters that have not been played yet.
+      // Rest is a break, not gone for the day: only the CURRENT quarter's
+      // goalie plan needs a fallback if she was due in goal right now.
+      // Reassigning further-out quarters too used to strand her Q4 (or
+      // wherever) on whoever else was tied for fewest minutes the moment
+      // she sat down for a breather, with no way back even once she
+      // returned to Available — reported as "the snack goalie got messed
+      // up" after a mid-game rest. Out means gone for the game, so it still
+      // reassigns every remaining quarter right away.
+      const reassignThrough=v==="out" ? 3 : state.quarter;
       state.goaliePlan=state.goaliePlan.map((g,i)=>
-        g===p && i>=state.quarter ? pickReplacementGoalie(i,p) : g
+        g===p && i>=state.quarter && i<=reassignThrough ? pickReplacementGoalie(i,p) : g
       );
 
       const slot=slots.find(s=>state.lineup[s]===p);
@@ -2361,7 +2456,11 @@
   $("oppGoalBtn").onclick=oppGoal;$("undoGoalBtn").onclick=undoLastGoal;$("startNextQuarterBtn").onclick=startNextQuarter;$("closeQuarterBtn").onclick=()=>$("quarterModal").classList.remove("show");
   $("replaceLaterBtn").onclick=()=>$("replaceModal").classList.remove("show");
   $("printPlanBtn").onclick=openGamePlanPrint;
+  $("viewerPlanBtn").onclick=openGamePlanPrint;
+  $("viewerLeaveBtn").onclick=leaveSharedGame;
   $("printPlanNowBtn").onclick=()=>window.print();
+  $("downloadPlanBtn").onclick=downloadGamePlanSheet;
+  $("refreshPlanBtn").onclick=renderGamePlanPrint;
   $("closePlanPrintBtn").onclick=()=>$("planPrintModal").classList.remove("show");
   $("exportBtn").onclick=exportBackup;
   $("newGameBtn").onclick=resetGame;

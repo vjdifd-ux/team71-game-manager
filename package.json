@@ -1,7 +1,7 @@
 {
   "name": "team71-game-manager",
   "private": true,
-  "version": "25.0.0",
+  "version": "26.0.0",
   "type": "module",
   "description": "Team 71 Game Manager — Cloudflare Worker + D1 + static PWA",
   "scripts": {

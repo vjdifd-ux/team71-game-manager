@@ -83,6 +83,8 @@ export async function openApp({
       // ---- browser bits jsdom lacks -------------------------------------
       win.confirm = () => true;
       win.alert = () => {};
+      win.URL.createObjectURL = () => "blob:mock-url";
+      win.URL.revokeObjectURL = () => {};
       let hidden = false;
       Object.defineProperty(win.document, "hidden", { get: () => hidden, configurable: true });
       win.__setHidden = (v) => {

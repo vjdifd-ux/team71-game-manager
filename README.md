@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v25 PRINT
+# Team 71 Game Manager — v26 ROSTER
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,19 +8,19 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v25:** see [`V25_PRINT.md`](V25_PRINT.md)
-- **Earlier changes:** [`V24_SIDELINE.md`](V24_SIDELINE.md), [`V23_ROTATION.md`](V23_ROTATION.md),
-  [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v26:** see [`V26_ROSTER.md`](V26_ROSTER.md)
+- **Earlier changes:** [`V25_PRINT.md`](V25_PRINT.md), [`V24_SIDELINE.md`](V24_SIDELINE.md),
+  [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v25 PRINT
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v26 ROSTER
 ```
 
-Worth a glance before every game. If it does not say `v25 PRINT`, the deploy
+Worth a glance before every game. If it does not say `v26 ROSTER`, the deploy
 did not land and you are running older code.
 
 ---
@@ -34,20 +34,26 @@ did not land and you are running older code.
    per-player preference to set.
 2. Set attendance for each girl. Marking someone Out here does the same thing
    as marking her Out during the game: she comes off the field, her minutes
-   stop, any quarter where she was the planned goalie is reassigned, and — if
-   the game is already underway — you're asked who from the bench should take
-   her spot.
+   stop, any quarter where she was the planned goalie is reassigned right
+   away, and — if the game is already underway — you're asked who from the
+   bench should take her spot. **Rest** is different: it's a break, not gone
+   for the day, so it only affects the goalie plan if she was due in goal
+   *this* quarter — a future quarter's assignment (the snack player's Q4,
+   say) is left alone.
 3. Pick a goalie for each of the four quarters, or leave some blank.
 4. **Build Game Plan** — your manual choices are kept, the snack player fills
    a blank Q4 if she's here, remaining blanks are filled in from season goalie
    minutes, and the starting five is chosen by lowest season minutes. This is
    committed to the shared game in one write, so the Q1 keeper on screen is
    always the Q1 keeper on the field.
-5. **Print / Save Game Plan** — a one-page fallback record (opponent, snack,
-   goalies, starting lineup, everyone's attendance). Works before or after
-   Build Game Plan runs. Print it, save it as a PDF from the print dialog, or
+5. **Print / Save Game Plan** — a one-page fallback record: opponent, snack,
+   a full-game rotation projected every 6 minutes (goalie, all four field
+   positions, and the bench), and everyone's attendance. Works before or
+   after Build Game Plan runs, and reflects whatever's current if you reopen
+   or hit Refresh later. Print it, Download it as a standalone HTML file, or
    just screenshot it on a phone — worth doing before you leave the house in
-   case the app or the phone lets you down mid-game.
+   case the app or the phone lets you down mid-game. Reachable from the Game
+   tab too (a **Game Plan** button), including for a Viewer's phone.
 
 **Sharing with the second phone**
 
@@ -63,7 +69,9 @@ did not land and you are running older code.
   goalie rotation, and recent activity — instead of the coach's full tab set,
   since there's nothing to edit on Pregame/History/Backup. A **Last sub**
   banner stays on screen after every substitution so a name changing on the
-  field is never a silent surprise.
+  field is never a silent surprise. A small bar at the top has **Game Plan**
+  (opens the same printable sheet) and **Leave Shared Game**, so a Viewer's
+  phone is never stuck with no way back to Pregame.
 
 **Game tab**
 
@@ -115,7 +123,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                115 tests — see below
+test/                121 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -140,7 +148,7 @@ npm install
 npm test
 ```
 
-115 tests, about 20 seconds, no network or Cloudflare account required.
+121 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

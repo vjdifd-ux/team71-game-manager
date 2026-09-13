@@ -91,12 +91,18 @@ test("REGRESSION: the printable game plan is a fallback record of the pregame se
   assert.equal(app.$("planPrintModal").classList.contains("show"), true);
 
   const sheet = app.$("planPrintSheet").textContent;
+  const [scheduleTable, attendanceTable] = app.$("planPrintSheet").querySelectorAll("table");
   assert.match(sheet, /Team 71 vs Team 72/, "opponent shown");
   assert.match(sheet, /Aria Stagnitta.*plays goalie in Q4/s, "snack assignment shown");
-  assert.match(sheet, /Q1: Olivia Carpenter/, "the manual Q1 pick shows up before Build Game Plan runs");
-  assert.match(sheet, /Not built yet/, "flags that the lineup isn't committed yet");
-  assert.match(sheet, /Luna Scrivano.*Out/s, "attendance status is listed for every player");
-  assert.match(sheet, /Norah Dineen.*Resting/s);
+  assert.match(scheduleTable.textContent, /Q1 • 00:00–06:00.*Olivia Carpenter/,
+    "the manual Q1 pick shows up before Build Game Plan runs");
+  assert.match(scheduleTable.textContent, /Q4 • 42:00–48:00/, "the projection covers the whole game, not just Q1");
+  assert.ok(!scheduleTable.textContent.includes("Luna Scrivano"),
+    "someone marked Out is excluded from the rotation entirely");
+  assert.ok(!scheduleTable.textContent.includes("Norah Dineen"),
+    "someone Resting is excluded from the rotation too, not just the field");
+  assert.match(attendanceTable.textContent, /Luna Scrivano.*Out/s, "attendance status is listed for every player");
+  assert.match(attendanceTable.textContent, /Norah Dineen.*Resting/s);
 
   await app.click("closePlanPrintBtn");
   assert.equal(app.$("planPrintModal").classList.contains("show"), false);
@@ -107,8 +113,37 @@ test("the printable game plan reflects the committed lineup once the plan is bui
   const app = await readyGame();
   await app.click("printPlanBtn");
   const sheet = app.$("planPrintSheet").textContent;
-  assert.match(sheet, new RegExp("Goalie:\\s*" + app.state().lineup.GK));
-  assert.doesNotMatch(sheet, /Not built yet/);
+  assert.match(sheet, new RegExp("Q1 • 00:00–06:00.*" + app.state().lineup.GK));
+  assert.match(sheet, /Q4 • 42:00–48:00/, "the full game is projected, not just Q1");
+  app.close();
+});
+
+test("Download produces a standalone HTML file of the current game plan sheet", async () => {
+  const app = await readyGame();
+  let downloadedName = null;
+  const originalClick = app.win.HTMLAnchorElement.prototype.click;
+  app.win.HTMLAnchorElement.prototype.click = function () { downloadedName = this.download; };
+
+  await app.click("printPlanBtn");
+  await app.click("downloadPlanBtn");
+  app.win.HTMLAnchorElement.prototype.click = originalClick;
+
+  assert.match(downloadedName, /^team71-gameplan-\d{4}-\d{2}-\d{2}\.html$/);
+  app.close();
+});
+
+test("Refresh re-renders the sheet from the current state without closing the modal", async () => {
+  const app = await readyGame();
+  await app.click("printPlanBtn");
+  assert.ok(app.$("planPrintSheet").textContent.includes("Norah Dineen"), "sanity: she starts out listed");
+
+  await app.setAvailPregame("Norah Dineen", "out");
+  await app.click("refreshPlanBtn");
+
+  assert.equal(app.$("planPrintModal").classList.contains("show"), true, "stays open");
+  const [scheduleTable] = app.$("planPrintSheet").querySelectorAll("table");
+  assert.ok(!scheduleTable.textContent.includes("Norah Dineen"),
+    "the rotation reflects the change made while the sheet was open");
   app.close();
 });
 
@@ -550,6 +585,36 @@ test("a planned goalie who becomes unavailable is replaced in the future plan on
   app.close();
 });
 
+test("REGRESSION: resting the Q4 goalie mid-game doesn't strand her future assignment on a tie-break default", async () => {
+  const app = await readyGame();
+  await app.setSnack("Luna Scrivano");                   // she's Q4's keeper via the snack rule
+  await app.click("buildPlanBtn");
+  assert.equal(app.state().goaliePlan[3], "Luna Scrivano");
+
+  await app.click("startPauseBtn");
+  await run(app, 60);
+  await app.setAvailPregame("Luna Scrivano", "rest");     // a quick breather, not gone for the day
+  assert.equal(app.state().goaliePlan[3], "Luna Scrivano",
+    "Rest is temporary — a future quarter's goalie plan should not change because of it");
+
+  await app.setAvailPregame("Luna Scrivano", "available");
+  assert.equal(app.state().goaliePlan[3], "Luna Scrivano", "and she's still Q4's keeper once she's back");
+  app.close();
+});
+
+test("marking the Q4 goalie fully Out still reassigns her future quarter right away", async () => {
+  const app = await readyGame();
+  await app.setSnack("Luna Scrivano");
+  await app.click("buildPlanBtn");
+
+  await app.click("startPauseBtn");
+  await run(app, 60);
+  await app.setAvailPregame("Luna Scrivano", "out");      // gone for the game
+  assert.notEqual(app.state().goaliePlan[3], "Luna Scrivano");
+  assert.ok(app.state().goaliePlan[3], "a replacement should be chosen immediately");
+  app.close();
+});
+
 test("marking a player Rest frees her slot too", async () => {
   const app = await readyGame();
   const victim = app.state().lineup.RB;
@@ -953,6 +1018,39 @@ test("a viewer phone follows along but cannot change anything", async () => {
   a.close(); b.close();
 });
 
+test("REGRESSION: a viewer can always get back out of viewer mode", async () => {
+  const backend = makeBackend();
+  const a = await readyGame({ backend });
+  await a.click("createShareBtn");
+  const b = await openApp({ backend });
+  await b.click("joinActiveViewerBtn");
+  assert.ok(b.doc.body.classList.contains("viewer-mode"));
+
+  // The escape hatch lives on the one page a viewer can see — not behind
+  // the Pregame tab, which is exactly what was hidden out from under it.
+  assert.notEqual(b.win.getComputedStyle(b.$("viewerBar")).display, "none");
+  await b.click("viewerLeaveBtn");
+
+  assert.equal(b.state().shareRole, "coach");
+  assert.equal(b.doc.body.classList.contains("viewer-mode"), false);
+  assert.notEqual(b.win.getComputedStyle(b.doc.querySelector(".tabs")).display, "none",
+    "the tab bar — and Pregame with it — is reachable again");
+  a.close(); b.close();
+});
+
+test("a viewer can open the game plan sheet without leaving viewer mode", async () => {
+  const backend = makeBackend();
+  const a = await readyGame({ backend });
+  await a.click("createShareBtn");
+  const b = await openApp({ backend });
+  await b.click("joinActiveViewerBtn");
+
+  await b.click("viewerPlanBtn");
+  assert.equal(b.$("planPrintModal").classList.contains("show"), true);
+  assert.match(b.$("planPrintSheet").textContent, /Team 71 vs Team 72/);
+  a.close(); b.close();
+});
+
 test("REGRESSION: a shared game left paused for 45 minutes is still joinable", async () => {
   const backend = makeBackend();
   const a = await readyGame({ backend });
@@ -1167,8 +1265,8 @@ test("the stale v20-era 3-player-batch wording is gone from the page", async () 
   app.close();
 });
 
-test("the version banner says v25 so the deployed build is identifiable", async () => {
+test("the version banner says v26 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v25 PRINT/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v26 ROSTER/);
   app.close();
 });
