@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v24 SIDELINE
+# Team 71 Game Manager — v25 PRINT
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,18 +8,19 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v24:** see [`V24_SIDELINE.md`](V24_SIDELINE.md)
-- **Earlier changes:** [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v25:** see [`V25_PRINT.md`](V25_PRINT.md)
+- **Earlier changes:** [`V24_SIDELINE.md`](V24_SIDELINE.md), [`V23_ROTATION.md`](V23_ROTATION.md),
+  [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v24 SIDELINE
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v25 PRINT
 ```
 
-Worth a glance before every game. If it does not say `v24 SIDELINE`, the deploy
+Worth a glance before every game. If it does not say `v25 PRINT`, the deploy
 did not land and you are running older code.
 
 ---
@@ -42,6 +43,11 @@ did not land and you are running older code.
    minutes, and the starting five is chosen by lowest season minutes. This is
    committed to the shared game in one write, so the Q1 keeper on screen is
    always the Q1 keeper on the field.
+5. **Print / Save Game Plan** — a one-page fallback record (opponent, snack,
+   goalies, starting lineup, everyone's attendance). Works before or after
+   Build Game Plan runs. Print it, save it as a PDF from the print dialog, or
+   just screenshot it on a phone — worth doing before you leave the house in
+   case the app or the phone lets you down mid-game.
 
 **Sharing with the second phone**
 
@@ -109,7 +115,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                113 tests — see below
+test/                115 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -134,7 +140,7 @@ npm install
 npm test
 ```
 
-113 tests, about 20 seconds, no network or Cloudflare account required.
+115 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

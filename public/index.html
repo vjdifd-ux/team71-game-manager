@@ -62,6 +62,20 @@
     @keyframes dueFlash{0%,100%{background:#052e16;border-color:#166534}50%{background:#7c2d12;border-color:#f97316}}
     @media (prefers-reduced-motion:reduce){.nextsub.due{animation:none;background:#7c2d12;border-color:#f97316}}
     .replace-options{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+    #planPrintCard{background:#fff;color:#111}
+    .print-sheet h2{margin:0 0 2px 0}
+    .print-sheet h3{margin:14px 0 4px 0;font-size:.95rem}
+    .print-sheet .muted{color:#555}
+    .print-sheet table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:4px}
+    .print-sheet th,.print-sheet td{border:1px solid #bbb;padding:4px 6px;text-align:left}
+    .print-sheet th{background:#f1f5f9}
+    @media print{
+      body *{visibility:hidden}
+      #planPrintModal,#planPrintModal *{visibility:visible}
+      #planPrintModal{position:fixed;inset:0;background:#fff;display:block!important;padding:0}
+      #planPrintModal .modal-card{box-shadow:none;border:none;width:100%!important;max-width:100%;padding:0;margin:0}
+      .no-print{display:none!important}
+    }
     .replace-btn{display:flex;justify-content:space-between;gap:8px;text-align:left}
 
     .field-stage{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:12px;align-items:start;margin-top:10px}
@@ -102,7 +116,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v24 SIDELINE</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v25 PRINT</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -195,6 +209,8 @@
     <div class="card">
       <div class="row"><div><strong>Automatic Game Plan</strong><div class="muted small">Goalies rotate every quarter. At 6 minutes the app reminds you to look for a sub opportunity. It recommends one fair 1-for-1 swap at a time; the clock never stops for subs.</div></div><button class="primary" id="buildPlanBtn">Build Game Plan</button><button id="clearGoaliesBtn">Clear Goalies</button></div>
       <div id="planPreview" class="small muted" style="margin-top:10px">No plan built yet.</div>
+      <div class="controls" style="margin-top:10px"><button id="printPlanBtn">Print / Save Game Plan</button></div>
+      <div class="muted small" style="margin-top:4px">A one-page fallback record — opponent, snack, goalies, lineup, and attendance. Print it, save it as a PDF, or just screenshot it before you leave the house.</div>
     </div>
   </section>
 
@@ -327,6 +343,17 @@
     <div class="muted small" id="replaceSubtitle"></div>
     <div class="replace-options" id="replaceOptions"></div>
     <div class="controls" style="margin-top:14px"><button id="replaceLaterBtn">Leave It Empty For Now</button></div>
+  </div>
+</div>
+
+<div class="modal" id="planPrintModal">
+  <div class="modal-card" id="planPrintCard" style="width:min(700px,100%)">
+    <div id="planPrintSheet" class="print-sheet"></div>
+    <div class="controls no-print" style="margin-top:14px">
+      <button class="primary" id="printPlanNowBtn">Print</button>
+      <button id="closePlanPrintBtn">Close</button>
+    </div>
+    <div class="muted small no-print" style="margin-top:8px">On a phone: use Print → Save as PDF, or just take a screenshot of the sheet above.</div>
   </div>
 </div>
 
@@ -1257,6 +1284,51 @@
   function readGoaliePlannerSelections(){
     if(goalieDraft) return [...goalieDraft];
     return [...(state.goaliePlan||["","","",""])];
+  }
+
+  /**
+   * A one-page fallback record of the game plan — opponent, snack, goalies,
+   * starting lineup, and every player's attendance for the day. Meant to be
+   * printed, saved as a PDF, or just screenshotted on a phone before leaving
+   * the house, so a crashed app or a dead phone doesn't lose the plan.
+   */
+  function renderGamePlanPrint(){
+    const box=$("planPrintSheet");
+    if(!box)return;
+    const plan=readGoaliePlannerSelections();
+    const dateStr=new Date().toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+    const jerseyLabel=state.homeAway==="home"?"Home — Red":"Away — Blue";
+
+    const attendanceRows=roster.map(p=>{
+      const presentLabel=state.present[p]?"Yes":"No";
+      const statusLabel=state.availability[p]==="out"?"Out":state.availability[p]==="rest"?"Resting":"Available";
+      const snackTag=p===state.snackPlayer?" <span class='muted'>(snack)</span>":"";
+      return "<tr><td>"+escapeHtml(p)+snackTag+"</td><td>"+presentLabel+"</td><td>"+statusLabel+"</td></tr>";
+    }).join("");
+
+    const goalieRow=plan.map((g,i)=>"Q"+(i+1)+": "+escapeHtml(g||"—")).join(" &nbsp;•&nbsp; ");
+
+    const lineupRow=state.planBuilt
+      ? ["GK","LB","RB","M","F"].map(s=>"<div><strong>"+posNames[s]+":</strong> "+escapeHtml(state.lineup[s]||"—")+"</div>").join("")
+      : "<div class='muted'>Not built yet — this reflects the current draft only.</div>";
+
+    box.innerHTML=
+      "<h2>Team 71 vs "+escapeHtml(state.opponent||"Opponent")+"</h2>"+
+      "<div class='muted'>"+dateStr+" • "+jerseyLabel+"</div>"+
+      "<h3>Snack</h3>"+
+      "<div>"+(state.snackPlayer?escapeHtml(state.snackPlayer)+" — plays goalie in Q4":"Not set")+"</div>"+
+      "<h3>Goalie Plan</h3>"+
+      "<div>"+goalieRow+"</div>"+
+      "<h3>Starting Lineup</h3>"+
+      lineupRow+
+      "<h3>Attendance</h3>"+
+      "<table><thead><tr><th>Player</th><th>Present</th><th>Status</th></tr></thead><tbody>"+attendanceRows+"</tbody></table>"+
+      "<div class='muted' style='margin-top:10px;font-size:.75rem'>Printed "+new Date().toLocaleString()+"</div>";
+  }
+
+  function openGamePlanPrint(){
+    renderGamePlanPrint();
+    $("planPrintModal").classList.add("show");
   }
 
   async function commitGamePlanAuthoritatively(){
@@ -2288,6 +2360,9 @@
   $("acceptSubBtn").onclick=acceptSuggestedSub;$("changeSubBtn").onclick=()=>{state.suggestedSub=null;suggestSub(true);actionSave(["lineup"]);renderSubSuggestion()};$("skipSubBtn").onclick=skipScheduledSub;
   $("oppGoalBtn").onclick=oppGoal;$("undoGoalBtn").onclick=undoLastGoal;$("startNextQuarterBtn").onclick=startNextQuarter;$("closeQuarterBtn").onclick=()=>$("quarterModal").classList.remove("show");
   $("replaceLaterBtn").onclick=()=>$("replaceModal").classList.remove("show");
+  $("printPlanBtn").onclick=openGamePlanPrint;
+  $("printPlanNowBtn").onclick=()=>window.print();
+  $("closePlanPrintBtn").onclick=()=>$("planPrintModal").classList.remove("show");
   $("exportBtn").onclick=exportBackup;
   $("newGameBtn").onclick=resetGame;
   $("historyNewGameBtn").onclick=resetGame;

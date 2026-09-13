@@ -79,6 +79,39 @@ test("if the snack player is unavailable, Q4 falls back to normal fairness", asy
   app.close();
 });
 
+test("REGRESSION: the printable game plan is a fallback record of the pregame setup", async () => {
+  const app = await openApp();
+  await app.setSnack("Aria Stagnitta");
+  await app.setAvailPregame("Luna Scrivano", "out");
+  await app.setAvailPregame("Norah Dineen", "rest");
+  await app.setGoalie(0, "Olivia Carpenter");
+
+  assert.equal(app.$("planPrintModal").classList.contains("show"), false);
+  await app.click("printPlanBtn");
+  assert.equal(app.$("planPrintModal").classList.contains("show"), true);
+
+  const sheet = app.$("planPrintSheet").textContent;
+  assert.match(sheet, /Team 71 vs Team 72/, "opponent shown");
+  assert.match(sheet, /Aria Stagnitta.*plays goalie in Q4/s, "snack assignment shown");
+  assert.match(sheet, /Q1: Olivia Carpenter/, "the manual Q1 pick shows up before Build Game Plan runs");
+  assert.match(sheet, /Not built yet/, "flags that the lineup isn't committed yet");
+  assert.match(sheet, /Luna Scrivano.*Out/s, "attendance status is listed for every player");
+  assert.match(sheet, /Norah Dineen.*Resting/s);
+
+  await app.click("closePlanPrintBtn");
+  assert.equal(app.$("planPrintModal").classList.contains("show"), false);
+  app.close();
+});
+
+test("the printable game plan reflects the committed lineup once the plan is built", async () => {
+  const app = await readyGame();
+  await app.click("printPlanBtn");
+  const sheet = app.$("planPrintSheet").textContent;
+  assert.match(sheet, new RegExp("Goalie:\\s*" + app.state().lineup.GK));
+  assert.doesNotMatch(sheet, /Not built yet/);
+  app.close();
+});
+
 /* ============================================================ the clock itself */
 
 test("the clock only moves when it is running", async () => {
@@ -1134,8 +1167,8 @@ test("the stale v20-era 3-player-batch wording is gone from the page", async () 
   app.close();
 });
 
-test("the version banner says v24 so the deployed build is identifiable", async () => {
+test("the version banner says v25 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v24 SIDELINE/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v25 PRINT/);
   app.close();
 });
