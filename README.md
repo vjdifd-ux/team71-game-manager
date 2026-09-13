@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v26 ROSTER
+# Team 71 Game Manager — v27 TOUCH
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,19 +8,20 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v26:** see [`V26_ROSTER.md`](V26_ROSTER.md)
-- **Earlier changes:** [`V25_PRINT.md`](V25_PRINT.md), [`V24_SIDELINE.md`](V24_SIDELINE.md),
-  [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v27:** see [`V27_TOUCH.md`](V27_TOUCH.md)
+- **Earlier changes:** [`V26_ROSTER.md`](V26_ROSTER.md), [`V25_PRINT.md`](V25_PRINT.md),
+  [`V24_SIDELINE.md`](V24_SIDELINE.md), [`V23_ROTATION.md`](V23_ROTATION.md),
+  [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v26 ROSTER
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v27 TOUCH
 ```
 
-Worth a glance before every game. If it does not say `v26 ROSTER`, the deploy
+Worth a glance before every game. If it does not say `v27 TOUCH`, the deploy
 did not land and you are running older code.
 
 ---
@@ -123,7 +124,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                121 tests — see below
+test/                125 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -148,7 +149,7 @@ npm install
 npm test
 ```
 
-121 tests, about 20 seconds, no network or Cloudflare account required.
+125 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

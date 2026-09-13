@@ -355,12 +355,18 @@ test("REGRESSION: pressing Sub In Whole Bench again after the rotation is done a
   // A full-strength bench exactly mirrors the field, so an unconfirmed
   // repeat press used to silently swap everyone right back — declining the
   // confirmation must leave the lineup untouched instead.
+  // (Each press is a beat apart, same as a real confirm dialog taking a
+  // moment to interact with — P0.1's rapid-repeat guard should only ever
+  // catch a genuine same-instant double-fire, not deliberate, spaced-out
+  // presses.)
   app.win.confirm = () => false;
+  await run(app, 1);
   await app.click("acceptSubBtn");
   assert.deepEqual(app.state().lineup, afterFirst, "declining leaves the lineup alone");
 
   // An explicit confirm still lets the coach deliberately swap again.
   app.win.confirm = () => true;
+  await run(app, 1);
   await app.click("acceptSubBtn");
   assert.notDeepEqual(app.state().lineup, afterFirst, "confirming still allows a deliberate second swap");
   app.close();
@@ -768,6 +774,72 @@ test("goals land on the scorer, the team score, and the goal log", async () => {
   assert.equal(s.goalLog.length, 2);
   assert.equal(s.goalLog[0].player, scorer);
   assert.equal(s.goalLog[0].q, 1);
+  app.close();
+});
+
+test("P0.1: a sync/network failure never blocks local game actions", async () => {
+  const app = await readyGame({ backend: makeBackend() });
+  await app.click("createShareBtn");
+  await app.click("startPauseBtn");
+  await run(app, 60);
+
+  app.win.fetch = () => Promise.reject(new Error("network down"));
+
+  const scorer = app.state().lineup.F;
+  await app.scoreGoal(scorer);
+
+  assert.equal(app.state().ourScore, 1, "the goal is recorded locally even though every sync attempt is failing");
+  assert.equal(app.text("ourScore"), "1", "the screen updates immediately, not just localStorage");
+
+  await app.manualSub("Aria Stagnitta", "F");
+  assert.equal(app.state().lineup.F, "Aria Stagnitta", "further local actions keep working too");
+  app.close();
+});
+
+test("P0.1 REGRESSION: a same-instant duplicate tap (ghost click) never double-counts a goal", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+  const scorer = app.state().lineup.F;
+
+  // Two clicks with no time between them simulate a duplicate/ghost click
+  // event for the one tap a coach actually made, not two deliberate taps.
+  await app.scoreGoal(scorer);
+  await app.scoreGoal(scorer);
+  assert.equal(app.state().ourScore, 1, "the second, same-instant tap must be ignored");
+  assert.equal(app.state().goals[scorer], 1);
+  assert.equal(app.state().goalLog.length, 1);
+
+  await app.click("oppGoalBtn");
+  await app.click("oppGoalBtn");
+  assert.equal(app.state().theirScore, 1, "opponent goal button is guarded the same way");
+
+  // A real second tap, a beat later, must still count normally — the guard
+  // is against duplicate events, not against scoring twice in one game.
+  await run(app, 1);
+  await app.scoreGoal(scorer);
+  assert.equal(app.state().ourScore, 2, "a genuine later goal is never blocked");
+  app.close();
+});
+
+test("P0.1: a rapid duplicate tap on the emergency-replacement picker only records one action", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+
+  const victim = app.state().lineup.F;
+  await app.setAvailPregame(victim, "rest");
+  const [cover] = app.replaceOptions();
+
+  await app.confirmReplacement(cover);
+  await app.confirmReplacement(cover);
+  assert.equal(app.state().lineup.F, cover);
+
+  // If the duplicate event had pushed a second undo entry, one Undo would
+  // silently no-op (undoing the second, identical assignment back onto
+  // itself) and the coach would have to press it twice to get her back.
+  await app.click("undoBtn");
+  assert.equal(app.state().lineup.F, null, "a single Undo fully reverses the one real action");
   app.close();
 });
 
@@ -1281,8 +1353,8 @@ test("the stale v20-era 3-player-batch wording is gone from the page", async () 
   app.close();
 });
 
-test("the version banner says v26 so the deployed build is identifiable", async () => {
+test("the version banner says v27 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v26 ROSTER/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v27 TOUCH/);
   app.close();
 });
