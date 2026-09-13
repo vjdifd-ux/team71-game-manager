@@ -147,6 +147,22 @@ test("Refresh re-renders the sheet from the current state without closing the mo
   app.close();
 });
 
+test("REGRESSION: the game plan modal is scrollable and closable even when the sheet is taller than the screen", async () => {
+  const app = await readyGame();
+  await app.click("printPlanBtn");
+
+  const card = app.$("planPrintCard");
+  const style = app.win.getComputedStyle(card);
+  assert.equal(style.overflowY, "auto",
+    "a tall sheet must scroll inside the card, not overflow the fixed modal with the buttons unreachable");
+  assert.notEqual(style.maxHeight, "", "the card must be capped to fit the viewport, not left unbounded");
+
+  // A close button reachable without scrolling to the bottom of a long sheet.
+  await app.click("closePlanPrintXBtn");
+  assert.equal(app.$("planPrintModal").classList.contains("show"), false);
+  app.close();
+});
+
 /* ============================================================ the clock itself */
 
 test("the clock only moves when it is running", async () => {
