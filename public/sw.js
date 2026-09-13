@@ -1,4 +1,4 @@
-const CACHE='team71-v23-rotation';
+const CACHE='team71-v24-sideline';
 const STATIC=['./manifest.json','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{

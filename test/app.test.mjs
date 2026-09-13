@@ -52,14 +52,30 @@ test("build plan only auto-fills the quarters left blank", async () => {
   app.close();
 });
 
-test("a player who cannot keep goal is never planned as goalie", async () => {
+test("the snack player takes the last quarter in goal by default", async () => {
   const app = await openApp();
-  for (const p of ["Shalom Amaya", "Olivia Carpenter", "Norah Dineen", "Kennedy Kozlosky",
-                   "Juliette Maglio", "Luna Scrivano", "Serafina Sinagra"]) {
-    await app.setGkPref(p, "no");
-  }
+  await app.setSnack("Aria Stagnitta");
   await app.click("buildPlanBtn");
-  assert.deepEqual(new Set(app.state().goaliePlan), new Set(["Aria Stagnitta"]));
+  assert.equal(app.state().goaliePlan[3], "Aria Stagnitta");
+  app.close();
+});
+
+test("a manual Q4 pick overrides the snack default", async () => {
+  const app = await openApp();
+  await app.setSnack("Aria Stagnitta");
+  await app.setGoalie(3, "Luna Scrivano");
+  await app.click("buildPlanBtn");
+  assert.equal(app.state().goaliePlan[3], "Luna Scrivano");
+  app.close();
+});
+
+test("if the snack player is unavailable, Q4 falls back to normal fairness", async () => {
+  const app = await openApp();
+  await app.setSnack("Aria Stagnitta");
+  await app.setAvailPregame("Aria Stagnitta", "out");
+  await app.click("buildPlanBtn");
+  assert.notEqual(app.state().goaliePlan[3], "Aria Stagnitta");
+  assert.ok(app.state().goaliePlan[3], "someone should still be assigned");
   app.close();
 });
 
@@ -134,6 +150,30 @@ test("a manual substitution never moves the game clock", async () => {
   assert.equal(Math.round(later.play[outgoing]), 100, "and stop growing once she is off");
   assert.equal(Math.round(later.play["Aria Stagnitta"]), 50);
   assert.equal(Math.round(later.elapsed), 150);
+  app.close();
+});
+
+test("REGRESSION: a substitution leaves a persistent \"last sub\" banner, so a name change is never a silent surprise", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+  const outgoing = app.state().lineup.F;
+
+  assert.equal(app.$("lastSubBanner").classList.contains("show"), false, "nothing shown before any sub");
+
+  await app.manualSub("Aria Stagnitta", "F");
+  let s = app.state();
+  assert.match(s.lastSubDesc, /Aria Stagnitta IN for /);
+  assert.ok(s.lastSubDesc.includes(outgoing));
+  assert.equal(Math.round(s.lastSubAt), 100);
+  assert.equal(app.$("lastSubBanner").classList.contains("show"), true);
+  assert.match(app.$("lastSubBanner").textContent, /Aria Stagnitta IN for /);
+
+  // A later sub replaces it, not appends to it — it's "what just happened," not a log.
+  await run(app, 20);
+  await app.manualSub(outgoing, "F");
+  s = app.state();
+  assert.match(s.lastSubDesc, new RegExp(outgoing + " IN for Aria Stagnitta"));
   app.close();
 });
 
@@ -326,10 +366,10 @@ test("the replacement picker offers the bench sorted by fewest minutes, and a ma
   app.close();
 });
 
-test("a player covering an emergency sub is protected from the fairness engine until two rotation checkpoints pass", async () => {
+test("a player covering an emergency sub is protected from the fairness engine for the rest of this 6-minute window plus the next", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
-  await run(app, 100);
+  await run(app, 100);                                  // window [0,360)
 
   const victim = app.state().lineup.F;                 // e.g. Luna goes down injured
   await app.setAvailPregame(victim, "rest");
@@ -337,21 +377,50 @@ test("a player covering an emergency sub is protected from the fairness engine u
   await app.confirmReplacement(cover);
   assert.equal(app.state().lineup.F, cover);
   assert.equal(app.state().coverLocks[cover].for, victim);
+  assert.equal(app.state().coverLocks[cover].unlockAtElapsed, 720,
+    "unlocks at the start of the window after next, not tied to any button press");
 
-  await run(app, 300);                                  // past the 6:00 mark
+  await run(app, 300);                                  // elapsed ~400, past the 6:00 mark, still locked
   assert.ok(!app.state().suggestedSub.outgoingPlayers.includes(cover),
     "the covering player should not be suggested to come back out yet");
 
   await app.setAvailPregame(victim, "available");       // coach clears her to play again
-  await run(app, 10);
+  await app.click("changeSubBtn");                       // force a fresh suggestion
+  await run(app, 10);                                    // elapsed ~410, still locked
   assert.ok(!app.state().suggestedSub.incoming.includes(victim),
-    "she should not be auto-suggested back in the moment she's available again");
+    "she should not be auto-suggested back in while the lock holds");
 
-  await app.click("acceptSubBtn");                      // checkpoint 1 of 2
-  assert.ok(app.state().coverLocks[cover], "the lock survives the first checkpoint");
+  await run(app, 300);                                   // elapsed ~710, still inside the locked window
+  await app.click("changeSubBtn");
+  assert.ok(!app.state().suggestedSub.incoming.includes(victim),
+    "still excluded right up to the boundary");
+  // The unlock instant (720) lands exactly on this quarter's own buzzer here
+  // (an emergency in the first half of any quarter always unlocks no earlier
+  // than that quarter's end — see coverLockUnlockElapsed), so the "it lifts"
+  // half of the contract is covered by the unlockAtElapsed value asserted
+  // above rather than by riding the clock through the quarter transition.
+  app.close();
+});
 
-  await app.click("nextQuarterBtn");                    // checkpoint 2 of 2
-  assert.ok(!app.state().coverLocks[cover], "and clears at the second");
+test("a scheduled goalie change is never blocked by an active cover lock", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 400);                                   // window [360,720); unlock lands in Q2
+
+  const victim = app.state().lineup.F;
+  await app.setAvailPregame(victim, "rest");
+  await app.confirmReplacement("Serafina Sinagra");       // Q2's planned keeper covers from the bench
+  assert.equal(app.state().lineup.F, "Serafina Sinagra");
+  assert.ok(app.state().coverLocks["Serafina Sinagra"].unlockAtElapsed > 720,
+    "the lock is still active going into Q2");
+
+  await run(app, 320);                                    // ride out the rest of Q1 to the buzzer (720)
+
+  const s = app.state();
+  assert.equal(s.quarter, 1);
+  assert.equal(s.lineup.GK, "Serafina Sinagra",
+    "the scheduled goalie change happens regardless of the still-active cover lock");
+  assert.ok(s.coverLocks["Serafina Sinagra"], "confirming the lock really was still active at this point");
   app.close();
 });
 
@@ -836,6 +905,18 @@ test("a viewer phone follows along but cannot change anything", async () => {
                     "oppGoalBtn", "buildPlanBtn", "newGameBtn"]) {
     assert.equal(b.$(id).disabled, true, id + " must be locked for a viewer");
   }
+
+  // REGRESSION: a viewer gets one simplified page instead of the coach's
+  // full tab set — no separate Pregame/History/Backup to navigate, and no
+  // controls that only a coach could use anyway.
+  assert.ok(b.doc.body.classList.contains("viewer-mode"));
+  assert.equal(b.$("game").classList.contains("active"), true, "lands on the live game, not Pregame");
+  for (const id of ["setup", "history", "backup"]) {
+    assert.equal(b.win.getComputedStyle(b.$(id)).display, "none", "#" + id + " is hidden for a viewer");
+  }
+  assert.equal(b.win.getComputedStyle(b.doc.querySelector(".tabs")).display, "none");
+  assert.notEqual(b.win.getComputedStyle(b.$("audit")).display, "none",
+    "recent activity stays on the one page instead of behind a tab");
   a.close(); b.close();
 });
 
@@ -1053,8 +1134,8 @@ test("the stale v20-era 3-player-batch wording is gone from the page", async () 
   app.close();
 });
 
-test("the version banner says v23 so the deployed build is identifiable", async () => {
+test("the version banner says v24 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v23 ROTATION/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v24 SIDELINE/);
   app.close();
 });

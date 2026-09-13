@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v23 ROTATION
+# Team 71 Game Manager — v24 SIDELINE
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,18 +8,18 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v23:** see [`V23_ROTATION.md`](V23_ROTATION.md)
-- **v22 fixes:** see [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v24:** see [`V24_SIDELINE.md`](V24_SIDELINE.md)
+- **Earlier changes:** [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v23 ROTATION
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v24 SIDELINE
 ```
 
-Worth a glance before every game. If it does not say `v23 ROTATION`, the deploy
+Worth a glance before every game. If it does not say `v24 SIDELINE`, the deploy
 did not land and you are running older code.
 
 ---
@@ -28,17 +28,20 @@ did not land and you are running older code.
 
 **Pregame tab**
 
-1. Set the opponent and home/away.
-2. Set attendance and availability for each girl, plus whether she can play
-   goalie. Marking someone Out here does the same thing as marking her Out during
-   the game: she comes off the field, her minutes stop, any quarter where she
-   was the planned goalie is reassigned, and — if the game is already
-   underway — you're asked who from the bench should take her spot.
+1. Set the opponent and home/away, and who has snack today — she takes goalie
+   in Q4 by default. Everyone else is equally eligible for goalie; there's no
+   per-player preference to set.
+2. Set attendance for each girl. Marking someone Out here does the same thing
+   as marking her Out during the game: she comes off the field, her minutes
+   stop, any quarter where she was the planned goalie is reassigned, and — if
+   the game is already underway — you're asked who from the bench should take
+   her spot.
 3. Pick a goalie for each of the four quarters, or leave some blank.
-4. **Build Game Plan** — your manual choices are kept, blanks are filled in from
-   season goalie minutes, and the starting five is chosen by lowest season
-   minutes. This is committed to the shared game in one write, so the Q1 keeper
-   on screen is always the Q1 keeper on the field.
+4. **Build Game Plan** — your manual choices are kept, the snack player fills
+   a blank Q4 if she's here, remaining blanks are filled in from season goalie
+   minutes, and the starting five is chosen by lowest season minutes. This is
+   committed to the shared game in one write, so the Q1 keeper on screen is
+   always the Q1 keeper on the field.
 
 **Sharing with the second phone**
 
@@ -50,6 +53,11 @@ did not land and you are running older code.
   restart it, which is deliberate — one official clock.
 - Both phones can record goals and make substitutions. Changes are merged by
   domain, so a substitution on one phone never disturbs the clock on the other.
+- A Viewer's phone shows one simplified page — score, clock, field, bench,
+  goalie rotation, and recent activity — instead of the coach's full tab set,
+  since there's nothing to edit on Pregame/History/Backup. A **Last sub**
+  banner stays on screen after every substitution so a name changing on the
+  field is never a silent surprise.
 
 **Game tab**
 
@@ -101,7 +109,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                101 tests — see below
+test/                113 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -126,7 +134,7 @@ npm install
 npm test
 ```
 
-101 tests, about 20 seconds, no network or Cloudflare account required.
+113 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

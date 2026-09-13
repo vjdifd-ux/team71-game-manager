@@ -77,6 +77,13 @@
     .modal.show{display:flex}.modal-card{width:min(520px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px}
     .history-game{padding:10px 0;border-bottom:1px solid var(--line)}
     .hidden{display:none!important}
+    /* Viewer mode: one page — the live game plus recent activity, nothing to edit. */
+    body.viewer-mode .tabs{display:none}
+    body.viewer-mode .panel{display:none!important}
+    body.viewer-mode #game.panel,body.viewer-mode #audit.panel{display:block!important}
+    body.viewer-mode .coach-only{display:none!important}
+    .last-sub{background:#1e293b;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;display:none}
+    .last-sub.show{display:block}
   
     .goalie-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
     @media(max-width:700px){.goalie-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -95,7 +102,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v23 ROTATION</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v24 SIDELINE</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -114,6 +121,9 @@
         <label>Opponent<input id="opponent" value="Team 72"></label>
         <label>Jersey / Side<select id="homeAway"><option value="home">Home — Red</option><option value="away">Away — Blue</option></select></label>
       </div>
+      <label style="display:block;margin-top:10px">Who has snack today? <span class="muted small">(she plays goalie in Q4)</span>
+        <select id="snackPlayer"><option value="">No snack assignment</option></select>
+      </label>
     </div>
 
 
@@ -167,7 +177,7 @@
 
     <div class="card">
       <div class="row"><strong>Players</strong><button id="allAvailableBtn">All Present & Available</button></div>
-      <div class="muted small" style="margin-top:5px">Set attendance and goalie preference. “Cannot GK” excludes a player from automatic goalie rotation.</div>
+      <div class="muted small" style="margin-top:5px">Just attendance — everyone's eligible for goalie. The snack player above takes Q4 by default.</div>
       <div id="setupPlayers"></div>
     </div>
 
@@ -194,19 +204,20 @@
         <div><div class="muted small" id="gameLabel">Team 71 vs Team 72</div><div class="score">Team 71 <span id="ourScore">0</span> – <span id="theirScore">0</span> <span id="oppName">Team 72</span></div></div>
         <div style="text-align:right"><div id="quarterLabel"><strong>Q1</strong></div><div id="timer" class="timer">00:00</div><div id="totalTimer" class="muted small">Game 00:00</div></div>
       </div>
-      <div class="controls" style="margin-top:10px">
+      <div class="controls coach-only" style="margin-top:10px">
         <button class="primary" id="startPauseBtn">Start</button>
         <button class="warn" id="nextQuarterBtn">Next Quarter / Set Lineup</button>
         <button class="danger" id="endGameBtn">End Game</button>
         <button id="newGameBtn">New Game / Reset</button>
         <button id="undoBtn">Undo</button>
       </div>
-      <div class="controls" style="margin-top:10px">
+      <div class="controls coach-only" style="margin-top:10px">
         <label class="small"><input id="soundToggle" type="checkbox" checked> Sounds</label>
         <button id="testSpeedBtn" type="button">Test Speed: 1×</button>
         <span id="testSpeedNote" class="muted small">Sub reminder at 6:00 (clock keeps running) • quarter buzzer at 12:00</span>
       </div>
       <div id="status" class="notice">Build a game plan before starting.</div>
+      <div id="lastSubBanner" class="last-sub"></div>
     </div>
 
     <div class="game-layout">
@@ -215,7 +226,7 @@
           <div id="nextSubBox" class="nextsub">
             <div class="row"><strong id="nextEventLabel">Next Rotation</strong><span id="subCountdown" class="pill">6:00</span></div>
             <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">At 6:00 the reminder starts flashing. The clock keeps running. Sub the whole bench in at once when you're ready, or make any manual sub instead.</div>
-            <div class="controls" style="margin-top:8px">
+            <div class="controls coach-only" style="margin-top:8px">
               <button id="acceptSubBtn" class="good">Sub In Whole Bench</button>
               <button id="changeSubBtn">Change Suggestion</button>
               <button id="skipSubBtn">Dismiss Reminder</button>
@@ -248,7 +259,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card coach-only">
           <div class="row"><strong>Quick Score</strong><span class="pill">Team 71 <span id="quickUs">0</span> – <span id="quickThem">0</span></span></div>
           <div id="goalScorers" class="grid2" style="margin-top:10px"></div>
           <div class="controls" style="margin-top:10px"><button id="oppGoalBtn">+ Opponent Goal</button><button id="undoGoalBtn">Undo Last Goal</button></div>
@@ -256,7 +267,7 @@
       </div>
 
       <aside>
-        <div class="card">
+        <div class="card coach-only">
           <strong>Substitution Help</strong>
           <div class="muted small" style="margin:4px 0 10px">Tap a sideline player, then tap any field position — including goalie. Subs never move the game clock. At 6:00 the reminder starts flashing and stays available all quarter: "Sub In Whole Bench" swaps every bench player on at once (fewest minutes in, most minutes out), one tap, whenever you're ready.</div>
         </div>
@@ -364,7 +375,7 @@
       opponent:"Team 72",homeAway:"home",
       present:Object.fromEntries(roster.map(p=>[p,true])),
       availability:Object.fromEntries(roster.map(p=>[p,"available"])),
-      gkPref:Object.fromEntries(roster.map(p=>[p,"yes"])),
+      snackPlayer:"",
       goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null},
       selectedBench:null, elapsed:0, quarter:0, running:false, ended:false,
       awaitingQuarterTransition:false, planBuilt:false,
@@ -373,7 +384,7 @@
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,
       shareCode:"", lastAuditCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
       timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, testSpeed:1, soundEnabled:true,
-      coverLocks:{}
+      coverLocks:{}, lastSubDesc:"", lastSubAt:0
     };
   }
   function $(id){return document.getElementById(id)}
@@ -498,7 +509,6 @@
     if(!confirm("Reset the current game to 0:00? Season history will be kept.")) return;
 
     const oldCode=state.shareCode;
-    const keepGkPref={...state.gkPref};
 
     state.running=false;
     state.clockStartedAt=null;
@@ -515,7 +525,6 @@
 
     state=fresh();
     goalieDraft=["","","",""];
-    state.gkPref=keepGkPref;
     state.goaliePlan=["","","",""];
     state.lineup={GK:null,LB:null,RB:null,M:null,F:null};
     state.planBuilt=false;
@@ -784,6 +793,17 @@
     }finally{
       if(btn)btn.disabled=false;
     }
+  }
+
+  /**
+   * The one line the Game tab (and the whole viewer page) always shows for
+   * "what just happened" — separate from the audit log, which needs a tap to
+   * open. A viewer watching lineup names change with no context is exactly
+   * the confusion this is for: it stays on screen until the next sub.
+   */
+  function setLastSub(desc){
+    state.lastSubDesc=desc;
+    state.lastSubAt=state.elapsed;
   }
 
   async function addAudit(action, detail=""){
@@ -1059,18 +1079,20 @@
   function bench(){const set=new Set(onField());return activePool().filter(p=>!set.has(p))}
 
   /**
-   * A player who just came off for an emergency reason (injury, "doesn't want
-   * to play right now") is covered by whoever came in for her. That covering
-   * player owes the rotation two turns — the one she covered plus her own
-   * next one — before the fairness engine will pull her back out, and the
-   * player she covered for stays out of the automatic incoming pool until
-   * then, even once the coach flips her back to Available. Either side is
-   * always still available for a manual sub; this only gates the automatic
-   * "who's due" suggestions.
+   * A player who comes off for an emergency reason (injury, "doesn't want to
+   * play right now") is covered by whoever came in for her. That covering
+   * player keeps the spot — the fairness engine won't suggest pulling her
+   * back out, and won't suggest the player she covered for as a fill-in —
+   * until the rotation window she came off in AND the one after it have both
+   * finished. That's the rest of the current 6-minute half plus a full 6
+   * minutes more, based on the game clock, not on whether or when the coach
+   * happens to press a sub button. Either side is always still available for
+   * a manual sub, and a scheduled goalie change is never blocked by this —
+   * only the automatic swap suggestions are gated.
    */
   function activeCoverLocks(){
     const locks=state.coverLocks||{};
-    return Object.entries(locks).filter(([,l])=>l && l.rotationsLeft>0);
+    return Object.entries(locks).filter(([,l])=>l && state.elapsed<l.unlockAtElapsed);
   }
   function benchForFairness(){
     const covered=new Set(activeCoverLocks().map(([,l])=>l.for));
@@ -1079,13 +1101,9 @@
   function isCoveringPlayer(p){
     return activeCoverLocks().some(([sub])=>sub===p);
   }
-  function decrementCoverLocks(){
-    const locks=state.coverLocks;
-    if(!locks) return;
-    for(const key of Object.keys(locks)){
-      locks[key].rotationsLeft-=1;
-      if(locks[key].rotationsLeft<=0) delete locks[key];
-    }
+  /** The instant a cover lock made right now would expire: this 6-minute window, plus the next. */
+  function coverLockUnlockElapsed(){
+    return (Math.floor(state.elapsed/SUBINT)+2)*SUBINT;
   }
   function short(n){if(!n)return"Empty";const a=n.split(" ");return a[0]+" "+(a[1]?a[1][0]+".":"")}
   /**
@@ -1140,6 +1158,14 @@
 
   function renderSetup(){
     $("opponent").value=state.opponent;$("homeAway").value=state.homeAway;
+
+    const snackSel=$("snackPlayer");
+    if(snackSel){
+      snackSel.innerHTML='<option value="">No snack assignment</option>';
+      roster.forEach(p=>{const o=document.createElement("option");o.value=p;o.textContent=p;if(state.snackPlayer===p)o.selected=true;snackSel.append(o)});
+      snackSel.disabled=!canEdit();
+    }
+
     const box=$("setupPlayers");box.innerHTML="";
     roster.forEach(p=>{
       const r=document.createElement("div");r.className="player-row";
@@ -1152,12 +1178,19 @@
       const avail=document.createElement("select");
       [["available","Available"],["rest","Resting"],["out","Out / Hurt"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.availability[p]===v)o.selected=true;avail.append(o)});
       avail.addEventListener("change",()=>setAvailability(p,avail.value));
-      const gk=document.createElement("select");
-      [["yes","Will play GK"],["prefer","Prefer not GK"],["no","Cannot GK"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.gkPref[p]===v)o.selected=true;gk.append(o)});
-      gk.addEventListener("change",()=>{state.gkPref[p]=gk.value;actionSave(["setup"])});
-      r.append(name,avail,gk);box.append(r);
+      r.append(name,avail);box.append(r);
     });
     $("planPreview").innerHTML=state.planBuilt?'<strong>Goalies:</strong> '+state.goaliePlan.map((g,i)=>"Q"+(i+1)+" "+(g||"—")).join(" • ")+"<br><strong>Starting five:</strong> "+onField().join(", "):"No plan built yet.";
+  }
+
+  function setSnackPlayer(){
+    if(!guardEdit())return;
+    pushUndo("snack assignment");
+    state.snackPlayer=$("snackPlayer").value;
+    actionSave(["setup"]);
+    setStatus(state.snackPlayer
+      ? state.snackPlayer+" has snack today — she's the Q4 goalie by default."
+      : "No snack assignment set.");
   }
 
 
@@ -1172,8 +1205,9 @@
       const tag=document.createElement("div");tag.className="qtag";tag.textContent="Quarter "+(q+1);
       const sel=document.createElement("select");sel.style.marginTop="6px";
       const blank=document.createElement("option");blank.value="";blank.textContent="Choose goalie";sel.append(blank);
-      activePool().filter(p=>state.gkPref[p]!=="no").forEach(p=>{
-        const o=document.createElement("option");o.value=p;o.textContent=p;
+      activePool().forEach(p=>{
+        const o=document.createElement("option");o.value=p;
+        o.textContent=(q===3 && p===state.snackPlayer) ? p+" (snack — Q4 default)" : p;
         if(goalieDraft[q]===p)o.selected=true;
         sel.append(o);
       });
@@ -1245,7 +1279,7 @@
           homeAway:state.homeAway,
           present:state.present,
           availability:state.availability,
-          gkPref:state.gkPref
+          snackPlayer:state.snackPlayer
         })
       });
       if(!r.ok) throw new Error("plan commit failed");
@@ -1269,8 +1303,6 @@
     const pool=activePool();if(pool.length<5){alert("You need at least 5 available players.");return}
     pushUndo("build plan");
     const stats=seasonStats();
-    let eligible=pool.filter(p=>state.gkPref[p]!=="no");
-    if(!eligible.length){alert("At least one available player must be allowed to play goalie.");return}
     let plannedCounts=Object.fromEntries(roster.map(p=>[p,0]));
 
     // The visible dropdowns are the source of truth at the instant Build Game
@@ -1280,15 +1312,23 @@
 
     for(let q=0;q<4;q++){
       const manual=existingPlan[q];
-      if(manual && eligible.includes(manual)){
+      if(manual && pool.includes(manual)){
         state.goaliePlan[q]=manual;
         plannedCounts[manual]++;
         continue;
       }
 
-      const ranked=[...eligible].sort((a,b)=>{
-        const pa=(state.gkPref[a]==="prefer"?10:0)+(stats[a].gkQ*2)+plannedCounts[a];
-        const pb=(state.gkPref[b]==="prefer"?10:0)+(stats[b].gkQ*2)+plannedCounts[b];
+      // The snack player is the standing default for the last quarter, if
+      // she's here today and nobody already picked someone else for it.
+      if(q===3 && state.snackPlayer && pool.includes(state.snackPlayer)){
+        state.goaliePlan[q]=state.snackPlayer;
+        plannedCounts[state.snackPlayer]++;
+        continue;
+      }
+
+      const ranked=[...pool].sort((a,b)=>{
+        const pa=stats[a].gkQ*2+plannedCounts[a];
+        const pb=stats[b].gkQ*2+plannedCounts[b];
         return pa-pb || stats[a].minutes-stats[b].minutes;
       });
       const pick=ranked[0];
@@ -1305,6 +1345,9 @@
     state.suggestedSub=null;
     state.subDone=[false,false,false,false];
     state.nextSubAt=state.quarter*QLEN+SUBINT;
+    state.coverLocks={};
+    state.lastSubDesc="";
+    state.lastSubAt=0;
 
     goalieDraft=[...state.goaliePlan];
     save();
@@ -1333,6 +1376,14 @@
     const atQuarterStart = !state.running && state.elapsed===state.quarter*QLEN && state.elapsed>0;
     $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+" of 4</strong>"+
       (atQuarterStart ? " <span class='pill'>Lineup ready — press Start when positioned</span>" : "");
+
+    const lastSub=$("lastSubBanner");
+    if(lastSub){
+      lastSub.classList.toggle("show",!!state.lastSubDesc);
+      if(state.lastSubDesc){
+        lastSub.innerHTML="<strong>Last sub</strong> — at "+fmt(state.lastSubAt||0)+"<br>"+escapeHtml(state.lastSubDesc);
+      }
+    }
 
     if(state.planBuilt && state.quarter===0 && state.elapsed===0 && state.goaliePlan[0] && state.lineup.GK!==state.goaliePlan[0]){
       state.lineup.GK=state.goaliePlan[0];
@@ -1398,7 +1449,7 @@
       const left=document.createElement("span");
       const note=covering[p] ? " <span class='muted small'>· covering for "+short(covering[p].for)+"</span>" : "";
       left.innerHTML='<span class="small">'+p+'</span>'+note;
-      const controls=document.createElement("div");controls.className="controls";
+      const controls=document.createElement("div");controls.className="controls coach-only";
       [["Available","available"],["Rest","rest"],["Out","out"]].forEach(([t,v])=>{const b=document.createElement("button");b.textContent=t;b.style.minHeight="34px";b.style.padding="5px 8px";if(state.availability[p]===v)b.className=v==="out"?"danger":v==="rest"?"warn":"good";b.disabled=!canEdit();b.onclick=()=>setAvailability(p,v);controls.append(b)});
       d.append(left,controls);box.append(d);
     });
@@ -1457,12 +1508,11 @@
   }
 
   function pickReplacementGoalie(q,exclude){
-    const pool=activePool().filter(p=>p!==exclude&&state.gkPref[p]!=="no");
+    const pool=activePool().filter(p=>p!==exclude);
     if(!pool.length)return"";
-    return pool.sort((a,b)=>
-      (state.gkPref[a]==="prefer"?1:0)-(state.gkPref[b]==="prefer"?1:0) ||
-      state.gk[a]-state.gk[b]
-    )[0];
+    // The snack player is the standing default for the last quarter.
+    if(q===3 && state.snackPlayer && pool.includes(state.snackPlayer)) return state.snackPlayer;
+    return pool.sort((a,b)=>state.gk[a]-state.gk[b])[0];
   }
 
   /**
@@ -1514,13 +1564,15 @@
 
     // She's covering for an emergency departure: the fairness engine leaves
     // her on the field and leaves the player she covered for out of the
-    // automatic incoming pool until two rotation checkpoints have passed —
-    // the one she's covering, plus her own next one. A manual sub always
-    // overrides this; it only gates the automatic suggestions.
+    // automatic incoming pool for the rest of this 6-minute window plus the
+    // next one. A manual sub always overrides this; it only gates the
+    // automatic suggestions, and a scheduled goalie change is never blocked
+    // by it. See activeCoverLocks().
     state.coverLocks=state.coverLocks||{};
-    state.coverLocks[incoming]={for:outgoingPlayer,rotationsLeft:2};
+    state.coverLocks[incoming]={for:outgoingPlayer,unlockAtElapsed:coverLockUnlockElapsed()};
 
     $("replaceModal").classList.remove("show");
+    setLastSub(incoming+" IN for "+outgoingPlayer+" ("+posNames[slot]+")");
     actionSave(wasRunning ? ["lineup","setup","clock","stats"] : ["lineup","setup"]);
     addAudit("Player status",incoming+" IN for "+outgoingPlayer+" ("+posNames[slot]+")");
     renderAll();
@@ -1549,6 +1601,7 @@
       state.goaliePlan[state.quarter]=incoming;
     }
 
+    setLastSub(incoming+" IN for "+outgoing+(slot==="GK"?" at GK":""));
     actionSave(wasRunning ? ["lineup","clock","stats","setup"] : ["lineup","setup"]);
     addAudit(slot==="GK" ? "Goalie substitution" : "Manual substitution",
       incoming+" IN for "+outgoing+(slot==="GK"?" at GK":""));
@@ -1661,13 +1714,13 @@
     // one-for-one swaps.
     state.subDone[Math.min(3,state.quarter)]=true;
     state.nextSubAt=currentQuarterBoundary();
-    decrementCoverLocks();
 
     // Work out the NEXT recommended swap before saving, so the fresh suggestion
     // is what gets persisted and shared. Previously the save ran first and both
     // this phone's storage and the other coach's phone received a null.
     suggestSub(true);
 
+    setLastSub(desc);
     actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup"]);
     addAudit("Scheduled substitution",desc);
     renderAll();
@@ -1687,7 +1740,6 @@
     state.subDone[state.quarter]=true;
     state.suggestedSub=null;
     state.nextSubAt=currentQuarterBoundary();
-    decrementCoverLocks();
     actionSave(["lineup"]);
     addAudit("Rotation skipped","Marked scheduled rotation complete");
     renderAll();
@@ -1897,7 +1949,6 @@
       state.clockAnchorElapsed=state.elapsed;
       releaseWakeLock();
       playPeriodBuzzer();
-      decrementCoverLocks();
 
       if(q<3){
         const targetQuarter=q+1;
@@ -1947,15 +1998,11 @@
       : null;
 
     if(!g){
-      // v22: the fallback used to ignore "Prefer not GK" and could put a
-      // reluctant keeper in goal ahead of a willing one. Willing players first,
-      // then fewest goalie minutes.
-      g=pool
-        .filter(p=>state.gkPref[p]!=="no")
-        .sort((a,b)=>
-          (state.gkPref[a]==="prefer"?1:0)-(state.gkPref[b]==="prefer"?1:0) ||
-          state.gk[a]-state.gk[b]
-        )[0] || null;
+      // The snack player is the standing default for the last quarter;
+      // otherwise fewest goalie minutes.
+      g=(nq===3 && state.snackPlayer && pool.includes(state.snackPlayer))
+        ? state.snackPlayer
+        : pool.sort((a,b)=>state.gk[a]-state.gk[b])[0] || null;
     }
 
     const ranked=pool
@@ -2002,7 +2049,6 @@
     }
 
     pushUndo("quarter transition");
-    decrementCoverLocks();
     state.quarter=targetQuarter;
     state.awaitingQuarterTransition=false;
     state.elapsed=targetQuarter*QLEN;
@@ -2063,7 +2109,6 @@
     }
 
     pushUndo("move to next quarter");
-    decrementCoverLocks();
     state.running=false;
     state.clockStartedAt=null;
     state.timerOwnerId="";
@@ -2167,6 +2212,13 @@
 
     const viewer=!canEdit();
 
+    // A viewer's phone gets one simplified page — the live game plus recent
+    // activity — instead of the coach's full tab set. There's nothing to
+    // edit on Pregame/History/Backup, and switching tabs to find "what just
+    // happened" is exactly the confusion a viewer reported.
+    document.body.classList.toggle("viewer-mode",viewer);
+    if(viewer && !$("game").classList.contains("active")) showTab("game");
+
     // Controls whose only restriction is Coach vs Viewer.
     ["buildPlanBtn","clearGoaliesBtn","newGameBtn","undoBtn","allAvailableBtn","historyNewGameBtn",
      "deleteAllHistoryBtn","clearActiveBtn"].forEach(id=>{
@@ -2229,6 +2281,7 @@
   $("importFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(Array.isArray(j.history))seasonHistory=j.history;if(j.current)state={...fresh(),...j.current,running:false,clockStartedAt:null,timerOwnerId:""};localStorage.setItem(HIST,JSON.stringify(seasonHistory));actionSave(["all"]);renderAll();alert("Backup restored.")}catch(err){alert("That backup file could not be read.")}};r.readAsText(f)});
 
   $("opponent").addEventListener("input",()=>{state.opponent=$("opponent").value;actionSave(["setup"])});$("homeAway").addEventListener("change",()=>{state.homeAway=$("homeAway").value;actionSave(["setup"])});
+  $("snackPlayer").addEventListener("change",setSnackPlayer);
   $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});actionSave(["setup","lineup"]);renderAll()};
   $("buildPlanBtn").onclick=buildPlan;
   $("clearGoaliesBtn").onclick=clearGoaliePlan;$("startPauseBtn").onclick=startPause;$("nextQuarterBtn").onclick=nextQuarter;$("endGameBtn").onclick=endGame;$("undoBtn").onclick=undo;

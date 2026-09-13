@@ -169,10 +169,10 @@ export async function openApp({
       await flush();
     },
 
-    /** Pregame roster: goalie preference ("yes"|"prefer"|"no"). */
-    async setGkPref(name, value) {
-      const sel = rows()[ROSTER.indexOf(name)].querySelectorAll("select")[1];
-      sel.value = value;
+    /** Pregame: who has snack today (defaults to the Q4 goalie). */
+    async setSnack(name) {
+      const sel = $("snackPlayer");
+      sel.value = name;
       fire(sel);
       await flush();
     },
