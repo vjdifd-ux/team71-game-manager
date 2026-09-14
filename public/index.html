@@ -50,8 +50,21 @@
     .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
     @media(max-width:760px){.grid2,.grid4{grid-template-columns:1fr}}
     .player-row{display:grid;grid-template-columns:1.3fr .8fr .8fr;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
-    @media(max-width:650px){.player-row{grid-template-columns:1fr}.player-row>*{width:100%}}
+    /* Name keeps its own row; availability and skill sit side by side
+       underneath instead of each taking a full row, to save vertical space
+       on a phone with 8 players listed. */
+    @media(max-width:650px){
+      .player-row{grid-template-columns:1fr 1fr;row-gap:6px}
+      .player-row>label:first-child{grid-column:1/-1}
+      .player-row>*{width:100%}
+    }
     .score{font-size:1.75rem;font-weight:800}.timer{font-size:3rem;font-weight:900;letter-spacing:.03em}
+    .scoreboard{display:flex;align-items:center;justify-content:center;gap:14px;background:#0f172a;border-radius:14px;padding:14px 10px}
+    .scoreboard .team{flex:1;min-width:0;text-align:center}
+    .scoreboard .team-name{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .scoreboard .team-score{font-size:2.5rem;font-weight:900;line-height:1.15}
+    .scoreboard .team.us .team-score{color:var(--accent)}
+    .scoreboard .sep{font-size:1.4rem;font-weight:800;color:var(--muted)}
     .game-layout{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
     @media(max-width:900px){.game-layout{grid-template-columns:1fr}}
     .field{position:relative;aspect-ratio:4/5;border-radius:18px;overflow:hidden;background:
@@ -69,8 +82,6 @@
     /* Goals scored, shown right on the shirt so the field view alone answers
        "who scored" without a separate table. */
     .goal-badge{position:absolute;top:-4px;right:16px;width:18px;height:18px;border-radius:50%;background:#f59e0b;color:#111;font-size:.68rem;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4)}
-    .rotate-tag{margin-top:2px;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:999px;display:inline-block}
-    .rotate-tag.out{background:#7c2d12;color:#fed7aa}
     .pill.next-in{background:#166534;color:#bbf7d0}
     .bench-btn{display:flex;justify-content:space-between;gap:8px;width:100%;margin-bottom:8px;text-align:left}
     .bench-btn.selected{outline:2px solid #60a5fa;background:#172554}
@@ -140,8 +151,6 @@
     .goalie-q.current{outline:2px solid #60a5fa;background:#172554}
     .goalie-q .qtag{font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700}
     .goalie-q .gname{font-weight:700;margin-top:3px}
-    .shared-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    @media(max-width:700px){.shared-grid{grid-template-columns:1fr}}
     .sync-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#64748b;margin-right:6px}
     .sync-dot.live{background:#22c55e}.sync-dot.err{background:#ef4444}
     .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.15rem;font-weight:800;letter-spacing:.08em}
@@ -151,7 +160,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v31 CLEAN</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v32 SCHEDULE</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -166,6 +175,9 @@
   <section id="setup" class="panel active">
     <div class="card">
       <strong>Game Setup</strong>
+      <label style="display:block;margin-top:10px">This week's game <span class="muted small">(fills in opponent, jersey, and snack)</span>
+        <select id="scheduleGame"><option value="">Choose a scheduled game…</option></select>
+      </label>
       <div class="grid2" style="margin-top:10px">
         <label>Opponent<input id="opponent" value="Team 72"></label>
         <label>Jersey / Side<select id="homeAway"><option value="home">Home — Red</option><option value="away">Away — Blue</option></select></label>
@@ -180,46 +192,21 @@
     <div class="card" id="activeGameCard">
       <div class="row">
         <div>
-          <strong>Active Team 71 Game</strong>
-          <div class="muted small" style="margin-top:4px">If another coach already started a shared game, it will appear here automatically.</div>
-        </div>
-        <div class="controls"><button id="refreshActiveBtn">Refresh</button><button id="clearActiveBtn" class="danger">Clear Active Game</button></div>
-      </div>
-      <div id="activeGameInfo" class="notice" style="margin-top:10px">Checking for an active game…</div>
-      <div class="controls" style="margin-top:10px">
-        <button id="joinActiveViewerBtn" class="primary" disabled>Join as Viewer</button>
-        <button id="joinActiveCoachBtn" disabled>Join as Coach</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row">
-        <div>
           <strong>Shared Game</strong>
-          <div class="muted small" style="margin-top:4px">Use the same game code on both phones. Maureen can join as a viewer or as a second coach.</div>
+          <div class="muted small" style="margin-top:4px">If another coach already started a shared game, it will appear below automatically.</div>
         </div>
         <div id="syncStatus" class="small"><span class="sync-dot" id="syncDot"></span><span id="syncText">Local only</span><span id="syncAge" class="muted"></span></div>
       </div>
-      <div class="shared-grid" style="margin-top:10px">
-        <div>
-          <div class="small muted">Current game code</div>
-          <div id="shareCodeDisplay" class="code" style="margin:6px 0">—</div>
-          <div class="controls">
-            <button id="createShareBtn">Create Shared Game</button>
-            <button id="leaveShareBtn">Leave Shared Game</button>
-            <button id="connectionTestBtn">Connection Test</button>
-          </div>
-        </div>
-        <div>
-          <label class="small muted">Join existing game code</label>
-          <input id="joinCode" maxlength="8" placeholder="e.g. T71A8K" style="width:100%;margin-top:5px;text-transform:uppercase">
-          <label class="small muted" style="display:block;margin-top:8px">This phone's role</label>
-          <select id="shareRole" style="width:100%;margin-top:5px">
-            <option value="coach">Coach — can make changes</option>
-            <option value="viewer">Viewer — follow live status only</option>
-          </select>
-          <button id="joinShareBtn" class="primary" style="margin-top:8px;width:100%">Join Shared Game</button>
-        </div>
+      <div id="activeGameInfo" class="notice" style="margin-top:10px">Checking for an active game…</div>
+      <div class="small muted" style="margin-top:10px">Current game code: <span id="shareCodeDisplay" class="code">—</span></div>
+      <div class="controls" style="margin-top:10px">
+        <button id="joinActiveViewerBtn" class="primary" disabled>Join as Viewer</button>
+        <button id="createShareBtn">Create Shared Game</button>
+        <button id="connectionTestBtn">Connection Test</button>
+        <button id="refreshActiveBtn">Refresh</button>
+        <button id="leaveShareBtn">Leave Shared Game</button>
+        <button id="clearActiveBtn" class="danger">Clear Active Game</button>
+        <button id="joinActiveCoachBtn" disabled>Join as Coach</button>
       </div>
     </div>
 
@@ -267,8 +254,13 @@
       <div class="controls"><button id="viewerPlanBtn">Game Plan</button><button id="viewerLeaveBtn">Leave Shared Game</button></div>
     </div>
     <div class="card">
-      <div class="row">
-        <div><div class="muted small" id="gameLabel">Team 71 vs Team 72</div><div class="score">Team 71 <span id="ourScore">0</span> – <span id="theirScore">0</span> <span id="oppName">Team 72</span></div></div>
+      <div class="scoreboard">
+        <div class="team us"><div class="team-name">Team 71</div><div class="team-score" id="ourScore">0</div></div>
+        <div class="sep">–</div>
+        <div class="team"><div class="team-name" id="oppName">Team 72</div><div class="team-score" id="theirScore">0</div></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="muted small" id="gameLabel">Team 71 vs Team 72</div>
         <div style="text-align:right"><div id="quarterLabel"><strong>Q1</strong></div><div id="timer" class="timer">00:00</div><div id="totalTimer" class="muted small">Game 00:00</div></div>
       </div>
       <div class="controls coach-only" style="margin-top:10px">
@@ -279,11 +271,6 @@
         <button id="undoBtn">Undo</button>
         <button id="gameTabPlanBtn">Game Plan</button>
       </div>
-      <div class="controls coach-only" style="margin-top:10px">
-        <label class="small"><input id="soundToggle" type="checkbox" checked> Sounds</label>
-        <button id="testSpeedBtn" type="button">Test Speed: 1×</button>
-        <span id="testSpeedNote" class="muted small">Sub reminder at 6:00 (clock keeps running) • quarter buzzer at 12:00</span>
-      </div>
       <div id="status" class="notice">Build a game plan before starting.</div>
       <div id="lastSubBanner" class="last-sub"></div>
     </div>
@@ -293,7 +280,7 @@
         <div class="card">
           <div id="nextSubBox" class="nextsub">
             <div class="row"><strong id="nextEventLabel">Next Rotation</strong><span id="subCountdown" class="pill">6:00</span></div>
-            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">At 6:00 the reminder starts flashing. The clock keeps running. Sub the whole bench in at once when you're ready, or make any manual sub instead.</div>
+            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div>
             <div class="controls coach-only" style="margin-top:8px">
               <button id="acceptSubBtn" class="good">Sub In Whole Bench</button>
               <button id="changeSubBtn">Change Suggestion</button>
@@ -335,11 +322,6 @@
       </div>
 
       <aside>
-        <div class="card coach-only">
-          <strong>Substitution Help</strong>
-          <div class="muted small" style="margin:4px 0 10px">Tap a sideline player, then tap any field position — including goalie. Subs never move the game clock. At 6:00 the reminder starts flashing and stays available all quarter: "Sub In Whole Bench" swaps every bench player on at once (fewest minutes in, most minutes out), one tap, whenever you're ready.</div>
-        </div>
-
         <div class="card">
           <strong>Player Status</strong>
           <div id="statusPlayers" style="margin-top:8px"></div>
@@ -350,6 +332,15 @@
           <div style="overflow:auto;margin-top:8px"><table><thead><tr><th>Player</th><th>Total</th><th>GK</th><th>Goals</th></tr></thead><tbody id="liveMinutes"></tbody></table></div>
         </div>
       </aside>
+    </div>
+
+    <div class="card coach-only">
+      <strong>Test Speed &amp; Sound</strong>
+      <div class="controls" style="margin-top:10px">
+        <label class="small"><input id="soundToggle" type="checkbox" checked> Sounds</label>
+        <button id="testSpeedBtn" type="button">Test Speed: 1×</button>
+      </div>
+      <div id="testSpeedNote" class="muted small" style="margin-top:6px">Sub reminder at 6:00 (clock keeps running) • quarter buzzer at 12:00</div>
     </div>
   </section>
 
@@ -415,6 +406,19 @@
 <script>
 (() => {
   const roster=["Shalom Amaya","Olivia Carpenter","Norah Dineen","Kennedy Kozlosky","Juliette Maglio","Luna Scrivano","Serafina Sinagra","Aria Stagnitta"];
+  // The season schedule, from the team's game-day email — one dropdown fills
+  // in opponent, jersey/side, and the snack assignment (which also drives
+  // the Q4 goalie default) in one pick instead of three.
+  const SEASON_SCHEDULE=[
+    {date:"2026-09-12",label:"Sat Sep 12, 9:00 AM vs Team 72 (Home)",opponent:"Team 72",homeAway:"home",snack:"Serafina Sinagra"},
+    {date:"2026-09-19",label:"Sat Sep 19, 2:00 PM at Team 75 (Away)",opponent:"Team 75",homeAway:"away",snack:"Aria Stagnitta"},
+    {date:"2026-09-26",label:"Sat Sep 26, 2:00 PM vs Team 76 (Home)",opponent:"Team 76",homeAway:"home",snack:"Kennedy Kozlosky"},
+    {date:"2026-10-03",label:"Sat Oct 3, 1:00 PM vs Team 75 (Home)",opponent:"Team 75",homeAway:"home",snack:"Luna Scrivano"},
+    {date:"2026-10-17",label:"Sat Oct 17, 2:00 PM vs Team 72 (Home)",opponent:"Team 72",homeAway:"home",snack:"Olivia Carpenter"},
+    {date:"2026-10-24",label:"Sat Oct 24, 2:00 PM at Team 74 (Away)",opponent:"Team 74",homeAway:"away",snack:"Juliette Maglio"},
+    {date:"2026-11-01",label:"Sun Nov 1, 2:00 PM vs Team 75 (Home)",opponent:"Team 75",homeAway:"home",snack:"Shalom Amaya"},
+    {date:"2026-11-07",label:"Sat Nov 7, 2:00 PM at Team 76 (Away)",opponent:"Team 76",homeAway:"away",snack:"Norah Dineen"}
+  ];
   const slots=["GK","LB","RB","M","F"];
   const posNames={GK:"Goalie",LB:"Left Back",RB:"Right Back",M:"Support / Mid",F:"Forward"};
   const KEY="team71-v5-current", HIST="team71-v5-history";
@@ -1142,16 +1146,6 @@
     startAuditPolling();
     renderAll();
   }
-  async function joinSharedGame(){
-    const code=$("joinCode").value.trim().toUpperCase();
-    if(!code){alert("Enter the game code.");return}
-    const role=$("shareRole").value;
-    state.shareCode=code;state.shareRole=role;state.syncVersion=0;save();
-    await cloudPull();
-    await loadCloudHistory();
-    startCloudPolling();
-    renderAll();
-  }
   function leaveSharedGame(){
     state.shareCode="";state.shareRole="coach";state.syncVersion=0;
     if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
@@ -1274,6 +1268,17 @@
   function renderSetup(){
     $("opponent").value=state.opponent;$("homeAway").value=state.homeAway;
 
+    const scheduleSel=$("scheduleGame");
+    if(scheduleSel){
+      scheduleSel.innerHTML='<option value="">Choose a scheduled game…</option>';
+      SEASON_SCHEDULE.forEach(g=>{
+        const o=document.createElement("option");o.value=g.date;o.textContent=g.label;
+        if(state.opponent===g.opponent && state.homeAway===g.homeAway && state.snackPlayer===g.snack) o.selected=true;
+        scheduleSel.append(o);
+      });
+      scheduleSel.disabled=!canEdit();
+    }
+
     const snackSel=$("snackPlayer");
     if(snackSel){
       snackSel.innerHTML='<option value="">No snack assignment</option>';
@@ -1294,7 +1299,7 @@
       [["available","Available"],["rest","Resting"],["out","Out / Hurt"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.availability[p]===v)o.selected=true;avail.append(o)});
       avail.addEventListener("change",()=>setAvailability(p,avail.value));
       const skill=document.createElement("select");skill.title="Coach-only skill rating";
-      for(let v=1;v<=5;v++){const o=document.createElement("option");o.value=v;o.textContent="★".repeat(v)+" ("+v+")";if((state.skill[p]||3)===v)o.selected=true;skill.append(o)}
+      for(let v=1;v<=5;v++){const o=document.createElement("option");o.value=v;o.textContent="Rank "+v;if((state.skill[p]||3)===v)o.selected=true;skill.append(o)}
       skill.disabled=!canEdit();
       skill.addEventListener("change",()=>setSkill(p,Number(skill.value)));
       r.append(name,avail,skill);box.append(r);
@@ -1316,11 +1321,26 @@
     setStatus(p+" rated "+rating+"/5.");
   }
 
+  function applyScheduleGame(){
+    if(!guardEdit())return;
+    const g=SEASON_SCHEDULE.find(x=>x.date===$("scheduleGame").value);
+    if(!g)return;
+    pushUndo("apply scheduled game");
+    state.opponent=g.opponent;
+    state.homeAway=g.homeAway;
+    state.snackPlayer=g.snack;
+    actionSave(["setup"]);
+    renderAll();
+    setStatus("Loaded "+g.label+" — opponent, jersey, and snack are set.");
+  }
+
   function setSnackPlayer(){
     if(!guardEdit())return;
     pushUndo("snack assignment");
     state.snackPlayer=$("snackPlayer").value;
     actionSave(["setup"]);
+    // The Q4 goalie dropdown's visual default depends on the snack pick.
+    renderGoaliePlanner();
     setStatus(state.snackPlayer
       ? state.snackPlayer+" has snack today — she's the Q4 goalie by default."
       : "No snack assignment set.");
@@ -1338,10 +1358,16 @@
       const tag=document.createElement("div");tag.className="qtag";tag.textContent="Quarter "+(q+1);
       const sel=document.createElement("select");sel.style.marginTop="6px";
       const blank=document.createElement("option");blank.value="";blank.textContent="Choose goalie";sel.append(blank);
-      activePool().forEach(p=>{
+      // A blank Q4 already resolves to the snack player at Build Game Plan
+      // time (see computeGoaliePlan) — show that default in the dropdown
+      // itself too, so it's visible before the coach ever presses Build.
+      const pool=activePool();
+      const shownValue=(q===3 && !goalieDraft[q] && state.snackPlayer && pool.includes(state.snackPlayer))
+        ? state.snackPlayer : goalieDraft[q];
+      pool.forEach(p=>{
         const o=document.createElement("option");o.value=p;
         o.textContent=(q===3 && p===state.snackPlayer) ? p+" (snack — Q4 default)" : p;
-        if(goalieDraft[q]===p)o.selected=true;
+        if(shownValue===p)o.selected=true;
         sel.append(o);
       });
       sel.disabled=!canEdit();
@@ -1483,9 +1509,11 @@
       const tag=document.createElement("div");tag.className="qtag";tag.textContent=posNames[slot];
       const sel=document.createElement("select");sel.style.marginTop="6px";
       const takenElsewhere=new Set(Object.entries(draft).filter(([s])=>s!==slot).map(([,p])=>p));
+      // Plain "(N)" instead of repeated star characters — stars were getting
+      // clipped by the dropdown's width on a phone.
       pool.filter(p=>p!==gk && !takenElsewhere.has(p)).forEach(p=>{
         const o=document.createElement("option");o.value=p;
-        o.textContent=p+" ("+"★".repeat(state.skill[p]||3)+")";
+        o.textContent=p+" ("+(state.skill[p]||3)+")";
         if(draft[slot]===p)o.selected=true;
         sel.append(o);
       });
@@ -1495,7 +1523,12 @@
         lineupDraft={...currentLineupDraft(),[slot]:sel.value};
         renderLineupPlanner();
       };
-      card.append(tag,sel);box.append(card);
+      // The ranking is also shown right on the card, not just inside the
+      // closed dropdown, so it's visible at a glance.
+      const rank=document.createElement("div");rank.className="muted small";rank.style.marginTop="4px";
+      const picked=draft[slot];
+      rank.textContent=picked ? "Ranking: "+(state.skill[picked]||3) : "";
+      card.append(tag,sel,rank);box.append(card);
     });
     const chosen=new Set(Object.values(draft));
     const benchPreview=pool.filter(p=>p!==gk && !chosen.has(p));
@@ -1774,9 +1807,8 @@
     save();
 
     renderAll();
-    showTab("game");
     addAudit("Game plan built","Q1 GK "+state.lineup.GK+" • vs "+state.opponent);
-    setStatus("Game plan built. Q1 goalie: "+state.lineup.GK+". Review the field, then start the clock.");
+    setStatus("Game plan built. Q1 goalie: "+state.lineup.GK+". Head to the Game tab when you're ready to start the clock.");
   }
 
   function renderGame(){
@@ -1784,7 +1816,7 @@
     $("gameLabel").textContent="Team 71 vs "+state.opponent;
     $("oppName").textContent=state.opponent;$("ourScore").textContent=state.ourScore;$("theirScore").textContent=state.theirScore;$("quickUs").textContent=state.ourScore;$("quickThem").textContent=state.theirScore;
     const atQuarterStart = !state.running && state.elapsed===state.quarter*QLEN && state.elapsed>0;
-    $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+" of 4</strong>"+
+    $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+"</strong>"+
       (atQuarterStart ? " <span class='pill'>Lineup ready — press Start when positioned</span>" : "");
 
     const lastSub=$("lastSubBanner");
@@ -1823,16 +1855,11 @@
     }
     const jersey=state.homeAway==="home"?"home":"away";
     const positions={F:"posF",LB:"posLB",RB:"posRB",M:"posM",GK:"posGK"};
-    // The current suggested swap flags its slots/players right on the field
-    // and bench, so "who's rotating in or out" is visible at a glance and
-    // not just in the text box above.
-    const nextOutSlots=new Set(state.suggestedSub?state.suggestedSub.outgoingSlots:[]);
     Object.entries(positions).forEach(([slot,id])=>{
       const p=state.lineup[slot],el=$(id);
       const goals=p?(state.goals[p]||0):0;
       const badge=goals>0?'<div class="goal-badge">'+goals+'</div>':'';
-      const outTag=nextOutSlots.has(slot)?'<div class="rotate-tag out">OUT next</div>':'';
-      el.innerHTML=badge+'<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+(p?' • '+minfmt(state.play[p])+' min':'')+'</div>'+outTag;
+      el.innerHTML=badge+'<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+(p?' • '+minfmt(state.play[p])+' min':'')+'</div>';
       el.onclick=()=>{if(!canEdit()||state.ended){return}if(state.selectedBench)makeManualSub(state.selectedBench,slot)};
     });
     renderBench();renderStatusPlayers();renderMinutes();renderGoals();renderSubSuggestion();
@@ -2661,7 +2688,6 @@
 
   function renderShared(){
     if($("shareCodeDisplay")) $("shareCodeDisplay").textContent=state.shareCode||"—";
-    if($("shareRole")) $("shareRole").value=state.shareRole||"coach";
     if(state.shareCode) setSyncStatus("live",state.shareRole==="viewer"?"Shared • viewing live":"Shared • connected");
     else setSyncStatus("","Local only");
 
@@ -2737,6 +2763,7 @@
 
   $("opponent").addEventListener("input",()=>{state.opponent=$("opponent").value;actionSave(["setup"])});$("homeAway").addEventListener("change",()=>{state.homeAway=$("homeAway").value;actionSave(["setup"])});
   $("snackPlayer").addEventListener("change",setSnackPlayer);
+  $("scheduleGame").addEventListener("change",applyScheduleGame);
   $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});actionSave(["setup","lineup"]);renderAll()};
   $("buildPlanBtn").onclick=buildPlan;
   $("regenerateLineupBtn").onclick=regenerateLineup;
@@ -2767,7 +2794,6 @@
 
   $("createShareBtn").onclick=()=>{if(!guardEdit())return;createSharedGame()};
   $("connectionTestBtn").onclick=runConnectionTest;
-  $("joinShareBtn").onclick=joinSharedGame;
   $("leaveShareBtn").onclick=leaveSharedGame;
 
 

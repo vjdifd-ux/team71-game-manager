@@ -179,6 +179,14 @@ export async function openApp({
       await flush();
     },
 
+    /** Pregame: pick a game off the season schedule by its date (YYYY-MM-DD). */
+    async setScheduleGame(date) {
+      const sel = $("scheduleGame");
+      sel.value = date;
+      fire(sel);
+      await flush();
+    },
+
     /** Pregame roster: coach-only skill rating, 1-5. */
     async setSkill(name, rating) {
       const sel = rows()[ROSTER.indexOf(name)].querySelectorAll("select")[1];

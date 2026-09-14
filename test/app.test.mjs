@@ -10,7 +10,7 @@ const apiStatus = async (backend, path) => (await worker.fetch(req(path), backen
 
 const TICK = 250;
 
-/** Pregame → built plan, sitting on the Game tab ready to start. */
+/** Pregame → built plan, ready to start (stays on Pregame; Build Game Plan no longer auto-navigates). */
 async function readyGame(opts = {}) {
   const app = await openApp(opts);
   await app.setGoalie(0, "Olivia Carpenter");
@@ -76,6 +76,31 @@ test("if the snack player is unavailable, Q4 falls back to normal fairness", asy
   await app.click("buildPlanBtn");
   assert.notEqual(app.state().goaliePlan[3], "Aria Stagnitta");
   assert.ok(app.state().goaliePlan[3], "someone should still be assigned");
+  app.close();
+});
+
+test("picking a scheduled game fills in opponent, jersey, and snack together", async () => {
+  const app = await openApp();
+  await app.setScheduleGame("2026-09-19"); // at Team 75, Away, snack Aria Stagnitta
+  const s = app.state();
+  assert.equal(s.opponent, "Team 75");
+  assert.equal(s.homeAway, "away");
+  assert.equal(s.snackPlayer, "Aria Stagnitta");
+  app.close();
+});
+
+test("the Q4 goalie dropdown visually defaults to the snack player before Build Game Plan", async () => {
+  const app = await openApp();
+  await app.setSnack("Aria Stagnitta");
+  const q4Select = app.doc.querySelectorAll("#goaliePlanner .goalie-q select")[3];
+  assert.equal(q4Select.value, "Aria Stagnitta");
+  app.close();
+});
+
+test("Build Game Plan stays on the Pregame tab instead of jumping to Game", async () => {
+  const app = await readyGame();
+  assert.equal(app.$("setup").classList.contains("active"), true);
+  assert.equal(app.$("game").classList.contains("active"), false);
   app.close();
 });
 
@@ -1125,6 +1150,17 @@ test("two phones: the second coach cannot hijack a clock the first phone owns", 
   a.close(); b.close();
 });
 
+test("REGRESSION: the shared-game UI is one card, not two, with no manual join-by-code fields", async () => {
+  const app = await openApp();
+  const card = app.$("activeGameCard");
+  assert.ok(card.contains(app.$("createShareBtn")), "Create Shared Game moved into the Active Game card");
+  assert.ok(card.contains(app.$("connectionTestBtn")), "Connection Test moved into the Active Game card");
+  assert.ok(card.contains(app.$("joinActiveCoachBtn")), "Join as Coach lives in the same card");
+  assert.equal(app.$("joinCode"), null, "the manual join-by-code input is gone");
+  assert.equal(app.$("joinShareBtn"), null, "the manual Join Shared Game button is gone");
+  app.close();
+});
+
 test("a viewer phone follows along but cannot change anything", async () => {
   const backend = makeBackend();
   const a = await readyGame({ backend });
@@ -1201,17 +1237,12 @@ test("a goal shows as a badge on top of the scorer's shirt", async () => {
   app.close();
 });
 
-test("the field and bench show who is rotating out and in next", async () => {
+test("the bench shows who is rotating in next", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
   await run(app, 30);
   const s = app.state().suggestedSub;
-  assert.ok(s && s.outgoingSlots.length, "sanity: there is a suggestion to show");
-
-  const posIds = { GK: "posGK", LB: "posLB", RB: "posRB", M: "posM", F: "posF" };
-  s.outgoingSlots.forEach((slot) => {
-    assert.ok(app.doc.querySelector("#" + posIds[slot] + " .rotate-tag.out"), slot + " should show OUT next");
-  });
+  assert.ok(s && s.incoming.length, "sanity: there is a suggestion to show");
 
   const benchBtns = [...app.doc.querySelectorAll("#benchSide .bench-btn")];
   s.incoming.forEach((p) => {
@@ -1243,8 +1274,7 @@ test("starting the clock re-publishes the game after Clear Active Game", async (
   await a.click("createShareBtn");
   await a.click("clearActiveBtn");
 
-  // Rejoin the same code and start play.
-  a.$("joinCode").value = a.state().lastAuditCode || "";
+  // Start a fresh shared game and start play.
   await a.click("createShareBtn");
   await a.click("startPauseBtn");
   await a.flush();
@@ -1492,6 +1522,17 @@ test("P2.2: Regenerate Suggestion discards a manual adjustment and recomputes", 
   app.close();
 });
 
+test("the starting lineup dropdown shows a plain numeric ranking, not stars", async () => {
+  const app = await openApp();
+  await app.setSkill("Kennedy Kozlosky", 5);
+  await app.setGoalie(0, "Shalom Amaya");
+  const options = [...app.doc.querySelectorAll("#lineupPlanner .goalie-q select")[0].options];
+  const kennedyOption = options.find((o) => o.value === "Kennedy Kozlosky");
+  assert.equal(kennedyOption.textContent, "Kennedy Kozlosky (5)");
+  assert.ok(!kennedyOption.textContent.includes("★"), "no star characters, they were getting clipped");
+  app.close();
+});
+
 test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the position she's already played the most", async () => {
   const seedState = {
     planBuilt: true,
@@ -1529,8 +1570,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v31 so the deployed build is identifiable", async () => {
+test("the version banner says v32 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v31 CLEAN/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v32 SCHEDULE/);
   app.close();
 });

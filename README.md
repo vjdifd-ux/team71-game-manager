@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v31 CLEAN
+# Team 71 Game Manager — v32 SCHEDULE
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,22 +8,23 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v31:** see [`V31_CLEAN.md`](V31_CLEAN.md)
-- **Earlier changes:** [`V30_BENCH.md`](V30_BENCH.md) (mostly reverted — see
-  V31), [`V29_SHEET.md`](V29_SHEET.md), [`V28_LINEUP.md`](V28_LINEUP.md),
-  [`V27_TOUCH.md`](V27_TOUCH.md), [`V26_ROSTER.md`](V26_ROSTER.md),
-  [`V25_PRINT.md`](V25_PRINT.md), [`V24_SIDELINE.md`](V24_SIDELINE.md),
-  [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v32:** see [`V32_SCHEDULE.md`](V32_SCHEDULE.md)
+- **Earlier changes:** [`V31_CLEAN.md`](V31_CLEAN.md), [`V30_BENCH.md`](V30_BENCH.md)
+  (mostly reverted — see V31), [`V29_SHEET.md`](V29_SHEET.md),
+  [`V28_LINEUP.md`](V28_LINEUP.md), [`V27_TOUCH.md`](V27_TOUCH.md),
+  [`V26_ROSTER.md`](V26_ROSTER.md), [`V25_PRINT.md`](V25_PRINT.md),
+  [`V24_SIDELINE.md`](V24_SIDELINE.md), [`V23_ROTATION.md`](V23_ROTATION.md),
+  [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v31 CLEAN
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v32 SCHEDULE
 ```
 
-Worth a glance before every game. If it does not say `v31 CLEAN`, the deploy
+Worth a glance before every game. If it does not say `v32 SCHEDULE`, the deploy
 did not land and you are running older code.
 
 ---
@@ -32,9 +33,12 @@ did not land and you are running older code.
 
 **Pregame tab**
 
-1. Set the opponent and home/away, and who has snack today — she takes goalie
-   in Q4 by default. Everyone else is equally eligible for goalie; there's no
-   per-player preference to set.
+1. **This week's game** — pick from the season schedule dropdown to fill in
+   opponent, jersey/side, and the snack assignment together. Or set them by
+   hand: opponent, home/away, and who has snack today — she takes goalie in
+   Q4 by default (the Q4 goalie dropdown shows this as soon as snack is set,
+   not just after Build Game Plan runs). Everyone else is equally eligible
+   for goalie; there's no per-player preference to set.
 2. Set attendance for each girl. Marking someone Out here does the same thing
    as marking her Out during the game: she comes off the field, her minutes
    stop, any quarter where she was the planned goalie is reassigned right
@@ -42,19 +46,21 @@ did not land and you are running older code.
    bench should take her spot. **Rest** is different: it's a break, not gone
    for the day, so it only affects the goalie plan if she was due in goal
    *this* quarter — a future quarter's assignment (the snack player's Q4,
-   say) is left alone. Each player also has a **coach-only skill rating**
-   (1–5 stars) here — it only ever softens a tie in playing time, so it can't
-   override real fairness, but it stops a brand-new or lower-rated player
+   say) is left alone. Each player also has a **coach-only skill ranking**
+   (1–5) here — it only ever softens a tie in playing time, so it can't
+   override real fairness, but it stops a brand-new or lower-ranked player
    from ending up in the starting five by pure coincidence of roster order.
 3. Pick a goalie for each of the four quarters, or leave some blank.
 4. **Starting Lineup** — a suggested GK/LB/RB/M/F for kickoff, weighing season
-   minutes first, skill rating as a tiebreaker, and each player's position
+   minutes first, skill ranking as a tiebreaker, and each player's position
    history so the same fair pick doesn't also repeat her most-played
-   position. Change any position by hand, or **Regenerate Suggestion** to
-   recompute from the current attendance/skill/goalie choices.
+   position. Each card shows the picked player's ranking directly. Change
+   any position by hand, or **Regenerate Suggestion** to recompute from the
+   current attendance/skill/goalie choices.
 5. **Build Game Plan** — commits the goalie plan and the starting lineup (as
    adjusted above) to the shared game in one write, so the Q1 keeper and
-   starting five on screen are always what's actually on the field.
+   starting five on screen are always what's actually on the field. Stays on
+   Pregame afterward — switch to the Game tab yourself when you're ready.
 6. **Print / Save Game Plan** — a one-page fallback record: opponent, snack,
    a full-game rotation projected every 6 minutes (goalie, all four field
    positions, and the bench), and everyone's attendance. Works before or
@@ -71,11 +77,11 @@ did not land and you are running older code.
 
 **Sharing with the second phone**
 
-- Coach A taps **Create Shared Game**.
-- Coach B opens the app; the live game appears under *Active Team 71 Game* within
-  about ten seconds. Tap **Join as Coach** (can make changes) or **Join as
-  Viewer** (follows along, read-only, for a second adult on the sideline or
-  a parent watching from the stands).
+- The **Shared Game** card handles create, join, and connection status in
+  one place. Tap **Create Shared Game** to start one. Once a game is active,
+  **Join as Viewer** (read-only, for a second adult on the sideline or a
+  parent watching from the stands) and **Join as Coach** buttons appear —
+  there's no code to type or role to pick by hand.
 - Only the phone that started the clock owns it. The other phone cannot pause or
   restart it, which is deliberate — one official clock.
 - Both phones can record goals and make substitutions. Changes are merged by
@@ -83,17 +89,17 @@ did not land and you are running older code.
 - A Viewer's phone shows one simplified page — score on top, clock, field,
   bench, goalie rotation, and recent activity — instead of the coach's full
   tab set, since there's nothing to edit on Pregame/History/Backup. Each
-  field position shows a small badge for goals already scored, and — when a
-  substitution is due — an **OUT next** tag on the field and an **IN next**
-  tag on the bench, so who's rotating is visible without reading a separate
-  box. A **Last sub** banner stays on screen after every substitution so a
-  name changing on the field is never a silent surprise. A small bar at the
-  top has **Game Plan** (opens the same printable/downloadable sheet) and
-  **Leave Shared Game**, so a Viewer's phone is never stuck with no way back
-  to Pregame.
+  field position shows a small badge for goals already scored, and the bench
+  tags whoever's next in with **IN next**. A **Last sub** banner stays on
+  screen after every substitution so a name changing on the field is never a
+  silent surprise. A small bar at the top has **Game Plan** (opens the same
+  printable/downloadable sheet) and **Leave Shared Game**, so a Viewer's
+  phone is never stuck with no way back to Pregame.
 
 **Game tab**
 
+- Score is front and center in its own scoreboard strip; the clock and
+  quarter (just "Q1", "Q2", …) sit to the right of it.
 - The big timer is the **quarter** clock, resetting to 0:00 each quarter. Total
   game time is underneath.
 - The clock stops only when you tap Pause, when a quarter ends, or when you tap
@@ -116,10 +122,11 @@ did not land and you are running older code.
   clock to the quarter boundary, applies the next quarter's lineup, and waits for
   you to press Start. This is the one button that does move the clock.
 - **End Game** saves the game to season history and closes the shared session.
-
-**Test Speed** cycles 1× → 10× → 60×, changeable only while paused. At 60× a
-12-minute quarter takes about 12 real seconds — useful for walking through a full
-game before a match. It resets to 1× on New Game.
+- **Test Speed & Sound** lives in its own card at the bottom of the tab, out
+  of the way of the controls you actually need mid-game. Test Speed cycles
+  1× → 10× → 60×, changeable only while paused. At 60× a 12-minute quarter
+  takes about 12 real seconds — useful for walking through a full game
+  before a match. It resets to 1× on New Game.
 
 ---
 
@@ -144,7 +151,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                136 tests — see below
+test/                141 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -169,7 +176,7 @@ npm install
 npm test
 ```
 
-136 tests, about 20 seconds, no network or Cloudflare account required.
+141 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game
