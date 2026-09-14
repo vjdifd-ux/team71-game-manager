@@ -138,6 +138,30 @@ every position, both badges, and the score/quarter/clock text, including
 the case where a player has both a goal badge and a minutes badge at once
 (opposite corners of the same shirt) — zero overlaps.
 
+## Round 5: the top clock never should have left, and "IN next" was confusing
+
+"You should never got rid of the time clock from the top of the game
+start/pause card... you can get rid of the up next in the sub lineup as
+its confusing and not needed."
+
+Two separate, direct fixes:
+
+- **The quarter and running clock are back on the coach's top card** (the
+  one with Start/Pause/End Game/etc.), not just on the field further down
+  the page. Rounds 1-4 all assumed the field was the only place this needed
+  to live, but the coach is looking at the top card while working the
+  controls — needing to scroll down to check the time defeats the purpose.
+  This mirrors the same values as the field's own clock (new `#timerTop`/
+  `#totalTimerTop`/`#quarterLabelTop` elements, updated alongside the
+  existing ones in the same render pass) rather than moving the field's
+  clock back up, since the field's own quarter/clock placement was already
+  carefully fixed in the last few rounds.
+- **Removed the "IN next" tag** on bench players entirely (`.next-in`, and
+  the code that computed which bench players it applied to). The
+  suggestion data behind it (`state.suggestedSub`) is unchanged and still
+  drives **Sub In Whole Bench** — only the visible tag on the bench list is
+  gone.
+
 ---
 
 ## Still open

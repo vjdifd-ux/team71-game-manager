@@ -97,7 +97,6 @@
        line) so bringing this back doesn't reopen the overlaps fixed by
        keeping every marker box a fixed, short height. */
     .min-badge{position:absolute;top:-4px;left:16px;background:rgba(15,23,42,.85);color:#e2e8f0;font-size:.6rem;font-weight:700;padding:1px 5px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.4);white-space:nowrap}
-    .pill.next-in{background:#166534;color:#bbf7d0}
     .bench-btn{display:flex;justify-content:space-between;gap:8px;width:100%;margin-bottom:8px;text-align:left}
     .bench-btn.selected{outline:2px solid #60a5fa;background:#172554}
     .notice{background:#172554;color:#dbeafe;border-radius:12px;padding:10px 12px;margin-top:10px}
@@ -282,7 +281,11 @@
       <div class="controls"><button id="viewerPlanBtn">Game Plan</button><button id="viewerLeaveBtn">Leave Shared Game</button></div>
     </div>
     <div class="card">
-      <div class="controls coach-only">
+      <div class="row">
+        <div id="quarterLabelTop"><strong>Q1</strong></div>
+        <div style="text-align:right"><div id="timerTop" class="timer">00:00</div><div id="totalTimerTop" class="muted small">Game 00:00</div></div>
+      </div>
+      <div class="controls coach-only" style="margin-top:10px">
         <button class="primary" id="startPauseBtn">Start</button>
         <button class="warn" id="nextQuarterBtn">Next Quarter / Set Lineup</button>
         <button class="danger" id="endGameBtn">End Game</button>
@@ -1847,6 +1850,7 @@
     const atQuarterStart = !state.running && state.elapsed===state.quarter*QLEN && state.elapsed>0;
     $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+"</strong>"+
       (atQuarterStart ? " <span class='pill'>Lineup ready — press Start when positioned</span>" : "");
+    $("quarterLabelTop").innerHTML="<strong>Q"+(state.quarter+1)+"</strong>";
 
     const lastSub=$("lastSubBanner");
     if(lastSub){
@@ -1864,6 +1868,8 @@
     const quarterNow=Math.max(0,totalNow-state.quarter*QLEN);
     $("timer").textContent=fmt(Math.min(QLEN,quarterNow));
     $("totalTimer").textContent="Game "+fmt(totalNow);
+    $("timerTop").textContent=fmt(Math.min(QLEN,quarterNow));
+    $("totalTimerTop").textContent="Game "+fmt(totalNow);
     $("startPauseBtn").textContent=state.awaitingQuarterTransition ? "Start Next Quarter" : (state.running?"Pause":(state.elapsed?"Resume":"Start"));
     $("startPauseBtn").disabled = state.ended || (!canEdit());
     $("nextQuarterBtn").disabled = state.ended || (!canEdit());
@@ -1904,14 +1910,12 @@
       return;
     }
     const covered=Object.fromEntries(activeCoverLocks().map(([sub,l])=>[l.for,sub]));
-    const nextIn=new Set(state.suggestedSub?state.suggestedSub.incoming:[]);
     list.forEach(p=>{
       targets.forEach(box=>{
         const b=document.createElement("button");
         b.className="bench-btn"+(state.selectedBench===p?" selected":"");
         const waiting=covered[p] ? " <span class='pill'>waiting on "+short(covered[p])+"</span>" : "";
-        const inTag=nextIn.has(p) ? " <span class='pill next-in'>IN next</span>" : "";
-        b.innerHTML='<span>'+p+waiting+inTag+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
+        b.innerHTML='<span>'+p+waiting+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
         b.disabled=!canEdit();b.onclick=()=>{if(!guardEdit())return;state.selectedBench=state.selectedBench===p?null:p;renderBench()};
         box.append(b);
       });

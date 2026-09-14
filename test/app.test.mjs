@@ -271,6 +271,17 @@ test("the clock only moves when it is running", async () => {
   app.close();
 });
 
+test("the coach's Start/Pause card also shows the running clock, not just the field", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 60);
+  assert.equal(app.text("timerTop"), app.text("timer"), "top clock should match the field clock");
+  assert.equal(app.text("totalTimerTop"), app.text("totalTimer"), "top total time should match the field's");
+  assert.equal(app.text("timerTop"), "01:00");
+  assert.match(app.$("quarterLabelTop").innerHTML, /Q1/);
+  app.close();
+});
+
 test("running the clock credits every player on the field, and GK time to the keeper", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
@@ -1263,17 +1274,17 @@ test("a goal shows as a badge on top of the scorer's shirt", async () => {
   app.close();
 });
 
-test("the bench shows who is rotating in next", async () => {
+test("the bench no longer tags who is rotating in next — confusing, per feedback, and removed", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
   await run(app, 30);
   const s = app.state().suggestedSub;
-  assert.ok(s && s.incoming.length, "sanity: there is a suggestion to show");
+  assert.ok(s && s.incoming.length, "sanity: the suggestion still exists (Sub In Whole Bench still needs it)");
 
   const benchBtns = [...app.doc.querySelectorAll("#benchSide .bench-btn")];
-  s.incoming.forEach((p) => {
-    const btn = benchBtns.find((b) => b.textContent.includes(p));
-    assert.ok(btn.querySelector(".next-in"), p + " should be tagged IN next");
+  assert.ok(benchBtns.length, "sanity: there are bench buttons to check");
+  benchBtns.forEach((btn) => {
+    assert.ok(!btn.querySelector(".next-in"), "no bench button should show an IN next tag");
   });
   app.close();
 });

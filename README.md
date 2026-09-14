@@ -92,15 +92,18 @@ did not land and you are running older code.
 - A Viewer's phone shows one simplified page — score on top, clock, field,
   bench, goalie rotation, and recent activity — instead of the coach's full
   tab set, since there's nothing to edit on Pregame/History/Backup. Each
-  field position shows a small badge for goals already scored, and the bench
-  tags whoever's next in with **IN next**. A **Last sub** banner stays on
-  screen after every substitution so a name changing on the field is never a
-  silent surprise. A small bar at the top has **Game Plan** (opens the same
-  printable/downloadable sheet) and **Leave Shared Game**, so a Viewer's
-  phone is never stuck with no way back to Pregame.
+  field position shows a small badge for goals already scored and another
+  for minutes played, on opposite corners of the shirt. A **Last sub**
+  banner stays on screen after every substitution so a name changing on the
+  field is never a silent surprise. A small bar at the top has **Game
+  Plan** (opens the same printable/downloadable sheet) and **Leave Shared
+  Game**, so a Viewer's phone is never stuck with no way back to Pregame.
 
 **Game tab**
 
+- The top card (Start/Pause and the other game controls) shows the quarter
+  and the running clock too, not just the field further down — no need to
+  scroll to check the time while you're working the controls.
 - One card holds the whole picture: the score, the field, and the clock are
   one graphic. Team names, score, quarter ("Q1", "Q2", …), and clock sit
   directly on the grass — no boxed background, just text with a shadow for
