@@ -45,7 +45,7 @@ const AUDIT_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Domains the app can patch independently, so two phones don't clobber each other. */
 const DOMAIN_FIELDS = {
-  setup:  ["opponent", "homeAway", "present", "availability", "snackPlayer", "goaliePlan", "planBuilt", "skill"],
+  setup:  ["opponent", "homeAway", "present", "availability", "snackPlayer", "goaliePlan", "planBuilt", "skill", "kickoffLineup"],
   lineup: ["lineup", "selectedBench", "suggestedSub", "nextSubAt", "subDone", "coverLocks", "lastSubDesc", "lastSubAt"],
   score:  ["goals", "ourScore", "theirScore", "goalLog"],
   clock:  ["elapsed", "quarter", "running", "ended", "timerOwnerId", "clockStartedAt",
@@ -223,6 +223,7 @@ async function route(request, env, url) {
       snackPlayer:  pick(body.snackPlayer, current.snackPlayer),
       goaliePlan:   Array.isArray(body.goaliePlan) ? body.goaliePlan : current.goaliePlan,
       lineup:       pick(body.lineup, current.lineup),
+      kickoffLineup: pick(body.kickoffLineup, current.kickoffLineup),
       planBuilt:    body.planBuilt ?? true,
       nextSubAt:    pick(body.nextSubAt, current.nextSubAt),
       subDone:      Array.isArray(body.subDone) ? body.subDone : current.subDone

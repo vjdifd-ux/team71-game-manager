@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v28 LINEUP
+# Team 71 Game Manager — v29 SHEET
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,20 +8,21 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v28:** see [`V28_LINEUP.md`](V28_LINEUP.md)
-- **Earlier changes:** [`V27_TOUCH.md`](V27_TOUCH.md), [`V26_ROSTER.md`](V26_ROSTER.md),
-  [`V25_PRINT.md`](V25_PRINT.md), [`V24_SIDELINE.md`](V24_SIDELINE.md),
-  [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v29:** see [`V29_SHEET.md`](V29_SHEET.md)
+- **Earlier changes:** [`V28_LINEUP.md`](V28_LINEUP.md), [`V27_TOUCH.md`](V27_TOUCH.md),
+  [`V26_ROSTER.md`](V26_ROSTER.md), [`V25_PRINT.md`](V25_PRINT.md),
+  [`V24_SIDELINE.md`](V24_SIDELINE.md), [`V23_ROTATION.md`](V23_ROTATION.md),
+  [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v28 LINEUP
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v29 SHEET
 ```
 
-Worth a glance before every game. If it does not say `v28 LINEUP`, the deploy
+Worth a glance before every game. If it does not say `v29 SHEET`, the deploy
 did not land and you are running older code.
 
 ---
@@ -57,10 +58,15 @@ did not land and you are running older code.
    a full-game rotation projected every 6 minutes (goalie, all four field
    positions, and the bench), and everyone's attendance. Works before or
    after Build Game Plan runs, and reflects whatever's current if you reopen
-   or hit Refresh later. Print it, Download it as a standalone HTML file, or
-   just screenshot it on a phone — worth doing before you leave the house in
-   case the app or the phone lets you down mid-game. Reachable from the Game
-   tab too (a **Game Plan** button), including for a Viewer's phone.
+   or hit Refresh later. Once the game is underway, a window whose 6 minutes
+   have already finished is crossed off automatically, and if the current
+   window's real lineup no longer matches what was planned (a manual sub),
+   the changed position is highlighted with what actually happened and what
+   the plan said. Print it, Download it as a standalone HTML file, or just
+   screenshot it on a phone — worth doing before you leave the house in case
+   the app or the phone lets you down mid-game. Reachable from the **Game
+   tab** too (a **Game Plan** button next to the other game controls, not
+   just Pregame), including for a Viewer's phone.
 
 **Sharing with the second phone**
 
@@ -132,7 +138,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                130 tests — see below
+test/                134 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -157,7 +163,7 @@ npm install
 npm test
 ```
 
-130 tests, about 20 seconds, no network or Cloudflare account required.
+134 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

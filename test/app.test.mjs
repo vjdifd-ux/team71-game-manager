@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, makeBackend, V21_HTML } from "./harness.mjs";
+import { openApp, makeBackend, roster, V21_HTML } from "./harness.mjs";
 import { req } from "./d1-shim.mjs";
 import worker from "../src/worker.js";
 
@@ -160,6 +160,53 @@ test("REGRESSION: the game plan modal is scrollable and closable even when the s
   // A close button reachable without scrolling to the bottom of a long sheet.
   await app.click("closePlanPrintXBtn");
   assert.equal(app.$("planPrintModal").classList.contains("show"), false);
+  app.close();
+});
+
+test("the Game tab has its own Game Plan button, not just Pregame and the viewer bar", async () => {
+  const app = await readyGame();
+  assert.equal(app.$("planPrintModal").classList.contains("show"), false);
+  await app.click("gameTabPlanBtn");
+  assert.equal(app.$("planPrintModal").classList.contains("show"), true);
+  app.close();
+});
+
+test("a finished rotation window is crossed off on the printable game plan", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 361); // just past the first 6-minute window
+
+  await app.click("printPlanBtn");
+  const rows = [...app.doc.querySelectorAll("#planPrintSheet .schedule tbody tr")];
+  assert.ok(rows[0].classList.contains("win-done"), "the window that already ended is crossed off");
+  assert.match(rows[0].textContent, /^✓/, "a visible check mark for a finished window");
+  assert.ok(!rows[1].classList.contains("win-done"), "the window still ahead is not crossed off");
+  app.close();
+});
+
+test("a manual change during the current window is highlighted on the printable game plan, a later one is not", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 30); // still well inside the first window
+
+  await app.click("printPlanBtn");
+  assert.equal(app.$("planPrintSheet").querySelectorAll(".diff-cell").length, 0,
+    "sanity: nothing manual has happened yet");
+  await app.click("closePlanPrintBtn");
+
+  const plannedF = app.state().lineup.F;
+  const onField = app.onField();
+  const incoming = roster.find((p) => !onField.includes(p));
+  await app.manualSub(incoming, "F");
+  assert.notEqual(app.state().lineup.F, plannedF, "sanity: the manual sub actually changed the field");
+
+  await app.click("printPlanBtn");
+  const rows = [...app.doc.querySelectorAll("#planPrintSheet .schedule tbody tr")];
+  assert.match(rows[0].textContent, /manual change/i);
+  assert.ok(rows[0].querySelector(".diff-cell").textContent.includes(app.state().lineup.F),
+    "the highlighted cell shows who is actually there now");
+  assert.equal(rows[1].querySelectorAll(".diff-cell").length, 0,
+    "a window that has not been reached yet is never flagged as manually changed");
   app.close();
 });
 
@@ -1447,8 +1494,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v28 so the deployed build is identifiable", async () => {
+test("the version banner says v29 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v28 LINEUP/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v29 SHEET/);
   app.close();
 });

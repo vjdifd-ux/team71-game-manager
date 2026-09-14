@@ -86,6 +86,14 @@
     .print-sheet .schedule{font-size:.68rem}
     .print-sheet .schedule th,.print-sheet .schedule td{padding:3px 4px}
     @media print{.print-sheet .schedule{font-size:.62rem}}
+    /* A window whose end time has already passed is crossed off, like a
+       paper checklist, so a glance at the sheet mid-game shows what's left. */
+    .print-sheet tr.win-done td{color:#888;text-decoration:line-through}
+    .print-sheet tr.win-done td:first-child{text-decoration:none;font-weight:600;color:#166534}
+    /* The window in progress right now is checked against the actual field —
+       a differing cell means a manual change already diverged from the plan. */
+    .print-sheet .diff-cell{background:#fef3c7;color:#92400e;font-weight:600}
+    .print-sheet .diff-tag{font-size:.62em;font-weight:400;display:block}
     @media print{
       body *{visibility:hidden}
       #planPrintModal,#planPrintModal *{visibility:visible}
@@ -137,7 +145,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v28 LINEUP</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v29 SHEET</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -263,6 +271,7 @@
         <button class="danger" id="endGameBtn">End Game</button>
         <button id="newGameBtn">New Game / Reset</button>
         <button id="undoBtn">Undo</button>
+        <button id="gameTabPlanBtn">Game Plan</button>
       </div>
       <div class="controls coach-only" style="margin-top:10px">
         <label class="small"><input id="soundToggle" type="checkbox" checked> Sounds</label>
@@ -450,7 +459,7 @@
       present:Object.fromEntries(roster.map(p=>[p,true])),
       availability:Object.fromEntries(roster.map(p=>[p,"available"])),
       snackPlayer:"",
-      goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null},
+      goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null}, kickoffLineup:null,
       selectedBench:null, elapsed:0, quarter:0, running:false, ended:false,
       awaitingQuarterTransition:false, planBuilt:false,
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
@@ -1370,6 +1379,7 @@
     if(state.elapsed===0){
       state.lineup.GK=null;
       state.planBuilt=false;
+      state.kickoffLineup=null;
     }
     actionSave(["setup","lineup"]);
     renderAll();
@@ -1515,7 +1525,17 @@
       const gk=(plan[q] && pool.includes(plan[q])) ? plan[q] : [...pool].sort((a,b)=>minutes[a]-minutes[b])[0];
       for(let half=0;half<2;half++){
         const eligible=pool.filter(p=>p!==gk);
-        const onField=[...eligible].sort((a,b)=>minutes[a]-minutes[b]).slice(0,4);
+        // Window 0 has real, already-committed data the instant the plan is
+        // built — use the FROZEN kickoff snapshot (not the live lineup,
+        // which can change from a manual sub the sheet needs to compare
+        // against) so the very first row is exact and a later manual change
+        // can still be detected against it.
+        const kickoff=state.kickoffLineup;
+        const useCommitted=q===0 && half===0 && state.planBuilt && kickoff && kickoff.GK===gk &&
+          ["LB","RB","M","F"].every(s=>kickoff[s] && pool.includes(kickoff[s]));
+        const onField=useCommitted
+          ? ["LB","RB","M","F"].map(s=>kickoff[s])
+          : [...eligible].sort((a,b)=>minutes[a]-minutes[b]).slice(0,4);
         const benchNow=eligible.filter(p=>!onField.includes(p));
         windows.push({
           startSec:q*QLEN+half*SUBINT,
@@ -1552,16 +1572,34 @@
     }).join("");
 
     const windows=projectFullGameSchedule();
+    const nowElapsed=displayElapsed();
+    // A window whose end time has already passed gets crossed off, like a
+    // paper checklist — nothing new to track, this game's clock already
+    // knows what time it is. The window actually in progress right now is
+    // additionally checked against the real field: any position that
+    // already differs from the plan is a manual change, so it's flagged
+    // instead of silently shown as if the plan were followed exactly. Past
+    // windows are shown crossed off but not re-checked against history —
+    // this sheet re-projects from now, it does not keep a full log of every
+    // earlier substitution (see V29's "Still open").
+    const posKeys=["gk","LB","RB","M","F"];
+    const actualNow={gk:state.lineup.GK,LB:state.lineup.LB,RB:state.lineup.RB,M:state.lineup.M,F:state.lineup.F};
     const scheduleRows=windows
-      ? windows.map((w,i)=>
-          "<tr><td>Q"+(Math.floor(i/2)+1)+" • "+fmt(w.startSec)+"–"+fmt(w.startSec+SUBINT)+"</td>"+
-          "<td>"+escapeHtml(w.gk||"—")+"</td>"+
-          "<td>"+escapeHtml(w.LB||"—")+"</td>"+
-          "<td>"+escapeHtml(w.RB||"—")+"</td>"+
-          "<td>"+escapeHtml(w.M||"—")+"</td>"+
-          "<td>"+escapeHtml(w.F||"—")+"</td>"+
-          "<td>"+escapeHtml(w.bench.join(", ")||"—")+"</td></tr>"
-        ).join("")
+      ? windows.map((w,i)=>{
+          const winEnd=w.startSec+SUBINT;
+          const done=nowElapsed>=winEnd;
+          const inProgress=!done && nowElapsed>=w.startSec;
+          const cell=(key)=>{
+            const planned=w[key]||"—";
+            if(inProgress && actualNow[key] && actualNow[key]!==w[key]){
+              return "<td class='diff-cell'>"+escapeHtml(actualNow[key])+"<span class='diff-tag'>manual change — plan: "+escapeHtml(planned)+"</span></td>";
+            }
+            return "<td>"+escapeHtml(planned)+"</td>";
+          };
+          return "<tr"+(done?" class='win-done'":"")+"><td>"+(done?"✓ ":"")+"Q"+(Math.floor(i/2)+1)+" • "+fmt(w.startSec)+"–"+fmt(winEnd)+"</td>"+
+            posKeys.map(cell).join("")+
+            "<td>"+escapeHtml(w.bench.join(", ")||"—")+"</td></tr>";
+        }).join("")
       : "<tr><td colspan='7' class='muted'>Need at least 5 available players to project a rotation.</td></tr>";
 
     box.innerHTML=
@@ -1570,7 +1608,10 @@
       "<h3>Snack</h3>"+
       "<div>"+(state.snackPlayer?escapeHtml(state.snackPlayer)+" — plays goalie in Q4":"Not set")+"</div>"+
       "<h3>Projected Rotation Plan</h3>"+
-      "<div class='muted' style='font-size:.75rem'>Assumes an even rotation from kickoff — the live fairness engine's own rule. Real substitutions may differ; reopen this sheet any time to re-project from the current roster.</div>"+
+      "<div class='muted' style='font-size:.75rem'>Assumes an even rotation from kickoff — the live fairness engine's own rule. "+
+      "<span style='text-decoration:line-through'>Crossed-off</span> windows have already finished. "+
+      "<span style='background:#fef3c7;color:#92400e;font-weight:600;padding:0 4px;border-radius:3px'>Highlighted</span> positions in the current window are a manual change from the plan. "+
+      "Reopen this sheet any time to re-project and re-check.</div>"+
       "<table class='schedule'><thead><tr><th>Time</th><th>GK</th><th>LB</th><th>RB</th><th>M</th><th>F</th><th>Bench</th></tr></thead><tbody>"+scheduleRows+"</tbody></table>"+
       "<h3>Attendance</h3>"+
       "<table><thead><tr><th>Player</th><th>Present</th><th>Status</th></tr></thead><tbody>"+attendanceRows+"</tbody></table>"+
@@ -1590,7 +1631,9 @@
       "<style>body{font-family:system-ui,-apple-system,sans-serif;background:#fff;color:#111;padding:16px;max-width:700px;margin:0 auto}"+
       "h2{margin:0 0 2px 0}h3{margin:14px 0 4px 0;font-size:.95rem}.muted{color:#555}"+
       "table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:4px}"+
-      "th,td{border:1px solid #bbb;padding:4px 6px;text-align:left}th{background:#f1f5f9}</style></head>"+
+      "th,td{border:1px solid #bbb;padding:4px 6px;text-align:left}th{background:#f1f5f9}"+
+      "tr.win-done td{color:#888;text-decoration:line-through}tr.win-done td:first-child{text-decoration:none;font-weight:600;color:#166534}"+
+      ".diff-cell{background:#fef3c7;color:#92400e;font-weight:600}.diff-tag{font-size:.75em;font-weight:400;display:block}</style></head>"+
       "<body>"+$("planPrintSheet").innerHTML+"</body></html>";
     const blob=new Blob([html],{type:"text/html"});
     const url=URL.createObjectURL(blob);
@@ -1617,6 +1660,7 @@
         body:JSON.stringify({
           goaliePlan:state.goaliePlan,
           lineup:state.lineup,
+          kickoffLineup:state.kickoffLineup,
           planBuilt:state.planBuilt,
           nextSubAt:state.nextSubAt,
           subDone:state.subDone,
@@ -1696,6 +1740,10 @@
 
     // Safety invariant: Q1 planner and the live field must always agree.
     state.lineup.GK=state.goaliePlan[0];
+    // Frozen at the instant of kickoff, so the printable sheet can tell a
+    // manual change apart from live state later — comparing "now" to itself
+    // would never show a difference.
+    state.kickoffLineup={GK:state.lineup.GK,LB:state.lineup.LB,RB:state.lineup.RB,M:state.lineup.M,F:state.lineup.F};
     state.planBuilt=true;
     state.suggestedSub=null;
     state.subDone=[false,false,false,false];
@@ -2683,6 +2731,7 @@
   $("replaceLaterBtn").onclick=()=>$("replaceModal").classList.remove("show");
   $("printPlanBtn").onclick=openGamePlanPrint;
   $("viewerPlanBtn").onclick=openGamePlanPrint;
+  $("gameTabPlanBtn").onclick=openGamePlanPrint;
   $("viewerLeaveBtn").onclick=leaveSharedGame;
   $("printPlanNowBtn").onclick=()=>window.print();
   $("downloadPlanBtn").onclick=downloadGamePlanSheet;

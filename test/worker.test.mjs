@@ -305,6 +305,22 @@ test("plan commit forces the field goalie to match the Q1 plan", async () => {
   assert.equal(s.planBuilt, true);
 });
 
+test("plan commit carries the frozen kickoff lineup snapshot through to the other phone", async () => {
+  const env = makeEnv();
+  await seed(env);
+  const kickoffLineup = { GK: "Olivia", LB: "B", RB: "C", M: "D", F: "E" };
+  const s = await jsonOf(await call(env, "/api/plan/T71AAAA", {
+    method: "PUT",
+    body: {
+      goaliePlan: ["Olivia", "Serafina", "Norah", "Luna"],
+      lineup: kickoffLineup,
+      kickoffLineup,
+      planBuilt: true
+    }
+  }));
+  assert.deepEqual(s.kickoffLineup, kickoffLineup);
+});
+
 test("plan commit preserves live clock and score fields it was not given", async () => {
   const env = makeEnv();
   await seed(env, "T71AAAA", baseState({ elapsed: 500, ourScore: 2, quarter: 1 }));
