@@ -112,10 +112,18 @@
     .print-sheet .diff-cell{background:#fef3c7;color:#92400e;font-weight:600}
     .print-sheet .diff-tag{font-size:.62em;font-weight:400;display:block}
     @media print{
+      /* position:fixed only ever paints on the first printed page — any
+         content that doesn't fit turns into blank (and, over a dark app
+         background, black) filler pages instead of continuing the sheet.
+         Static, in-flow content paginates correctly instead. max-height/
+         overflow-y:auto (added so the modal scrolls on screen) must also be
+         cleared here, or the sheet gets clipped to one viewport-tall chunk
+         before it ever reaches the printer. */
+      html,body{background:#fff!important}
       body *{visibility:hidden}
       #planPrintModal,#planPrintModal *{visibility:visible}
-      #planPrintModal{position:fixed;inset:0;background:#fff;display:block!important;padding:0}
-      #planPrintModal .modal-card{box-shadow:none;border:none;width:100%!important;max-width:100%;padding:0;margin:0}
+      #planPrintModal{position:static;background:#fff;display:block!important;padding:0}
+      #planPrintModal .modal-card{box-shadow:none;border:none;width:100%!important;max-width:100%;max-height:none;overflow:visible;padding:0;margin:0}
       .no-print{display:none!important}
     }
     .replace-btn{display:flex;justify-content:space-between;gap:8px;text-align:left}
@@ -160,7 +168,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v32 SCHEDULE</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v33 PRINTFIX</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 

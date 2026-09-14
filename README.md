@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v32 SCHEDULE
+# Team 71 Game Manager — v33 PRINTFIX
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,23 +8,23 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v32:** see [`V32_SCHEDULE.md`](V32_SCHEDULE.md)
-- **Earlier changes:** [`V31_CLEAN.md`](V31_CLEAN.md), [`V30_BENCH.md`](V30_BENCH.md)
-  (mostly reverted — see V31), [`V29_SHEET.md`](V29_SHEET.md),
-  [`V28_LINEUP.md`](V28_LINEUP.md), [`V27_TOUCH.md`](V27_TOUCH.md),
-  [`V26_ROSTER.md`](V26_ROSTER.md), [`V25_PRINT.md`](V25_PRINT.md),
-  [`V24_SIDELINE.md`](V24_SIDELINE.md), [`V23_ROTATION.md`](V23_ROTATION.md),
-  [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v33:** see [`V33_PRINTFIX.md`](V33_PRINTFIX.md)
+- **Earlier changes:** [`V32_SCHEDULE.md`](V32_SCHEDULE.md), [`V31_CLEAN.md`](V31_CLEAN.md),
+  [`V30_BENCH.md`](V30_BENCH.md) (mostly reverted — see V31),
+  [`V29_SHEET.md`](V29_SHEET.md), [`V28_LINEUP.md`](V28_LINEUP.md),
+  [`V27_TOUCH.md`](V27_TOUCH.md), [`V26_ROSTER.md`](V26_ROSTER.md),
+  [`V25_PRINT.md`](V25_PRINT.md), [`V24_SIDELINE.md`](V24_SIDELINE.md),
+  [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v32 SCHEDULE
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v33 PRINTFIX
 ```
 
-Worth a glance before every game. If it does not say `v32 SCHEDULE`, the deploy
+Worth a glance before every game. If it does not say `v33 PRINTFIX`, the deploy
 did not land and you are running older code.
 
 ---
@@ -151,7 +151,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                141 tests — see below
+test/                142 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -176,7 +176,7 @@ npm install
 npm test
 ```
 
-141 tests, about 20 seconds, no network or Cloudflare account required.
+142 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

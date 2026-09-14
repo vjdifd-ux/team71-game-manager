@@ -188,6 +188,28 @@ test("REGRESSION: the game plan modal is scrollable and closable even when the s
   app.close();
 });
 
+test("REGRESSION: printing the game plan sheet does not clip content or paginate onto blank pages", async () => {
+  const app = await readyGame();
+  await app.click("printPlanBtn");
+
+  const printRule = [...app.doc.styleSheets]
+    .flatMap((s) => { try { return [...s.cssRules]; } catch { return []; } })
+    .find((r) => r.media && r.media.mediaText.includes("print") &&
+      [...r.cssRules].some((inner) => inner.selectorText === "#planPrintModal"));
+  assert.ok(printRule, "a @media print block covering #planPrintModal exists");
+
+  const inner = [...printRule.cssRules];
+  const modalRule = inner.find((r) => r.selectorText === "#planPrintModal");
+  assert.equal(modalRule.style.position, "static",
+    "position:fixed only paints on the first printed page — any overflow becomes blank (black, over the app's dark background) pages instead of continuing the sheet");
+
+  const cardRule = inner.find((r) => r.selectorText === "#planPrintModal .modal-card");
+  assert.equal(cardRule.style.getPropertyValue("max-height"), "none",
+    "the on-screen 85vh scroll cap must not also clip the printed sheet to one viewport-tall chunk");
+  assert.equal(cardRule.style.overflow, "visible");
+  app.close();
+});
+
 test("the Game tab has its own Game Plan button, not just Pregame and the viewer bar", async () => {
   const app = await readyGame();
   assert.equal(app.$("planPrintModal").classList.contains("show"), false);
@@ -1570,8 +1592,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v32 so the deployed build is identifiable", async () => {
+test("the version banner says v33 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v32 SCHEDULE/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v33 PRINTFIX/);
   app.close();
 });
