@@ -66,6 +66,12 @@
     .shirt{width:54px;height:42px;margin:0 auto 5px;border-radius:8px 8px 10px 10px;border:2px solid rgba(0,0,0,.3);box-shadow:0 2px 5px rgba(0,0,0,.25)}
     .shirt.home{background:var(--home)}.shirt.away{background:var(--away)}.shirt.gk{background:#30343b}
     .fname{font-size:.75rem;font-weight:800;text-shadow:0 1px 1px #000}.fpos{font-size:.68rem}
+    /* Goals scored, shown right on the shirt so the field view alone answers
+       "who scored" without a separate table. */
+    .goal-badge{position:absolute;top:-4px;right:16px;width:18px;height:18px;border-radius:50%;background:#f59e0b;color:#111;font-size:.68rem;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+    .rotate-tag{margin-top:2px;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:999px;display:inline-block}
+    .rotate-tag.out{background:#7c2d12;color:#fed7aa}
+    .pill.next-in{background:#166534;color:#bbf7d0}
     .bench-btn{display:flex;justify-content:space-between;gap:8px;width:100%;margin-bottom:8px;text-align:left}
     .bench-btn.selected{outline:2px solid #60a5fa;background:#172554}
     .notice{background:#172554;color:#dbeafe;border-radius:12px;padding:10px 12px;margin-top:10px}
@@ -125,6 +131,13 @@
     body.viewer-mode .coach-only{display:none!important}
     .viewer-only{display:none}
     body.viewer-mode .viewer-only{display:flex}
+    /* Bench Coach: same simplified page as Viewer (viewer-mode above), plus
+       its own propose-a-sub controls that Viewer never sees. */
+    .bench-only{display:none}
+    body.bench-mode .bench-only{display:block}
+    body.bench-mode .controls.bench-only{display:flex}
+    #benchRequestCard{display:none}
+    body.has-bench-request #benchRequestCard{display:block}
     .last-sub{background:#1e293b;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;display:none}
     .last-sub.show{display:block}
   
@@ -145,7 +158,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v29 SHEET</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v30 BENCH</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -182,6 +195,7 @@
       <div id="activeGameInfo" class="notice" style="margin-top:10px">Checking for an active game…</div>
       <div class="controls" style="margin-top:10px">
         <button id="joinActiveViewerBtn" class="primary" disabled>Join as Viewer</button>
+        <button id="joinActiveBenchBtn" disabled>Join as Bench Coach</button>
         <button id="joinActiveCoachBtn" disabled>Join as Coach</button>
       </div>
     </div>
@@ -210,6 +224,7 @@
           <label class="small muted" style="display:block;margin-top:8px">This phone's role</label>
           <select id="shareRole" style="width:100%;margin-top:5px">
             <option value="coach">Coach — can make changes</option>
+            <option value="bench">Bench Coach — can propose subs, needs approval</option>
             <option value="viewer">Viewer — follow live status only</option>
           </select>
           <button id="joinShareBtn" class="primary" style="margin-top:8px;width:100%">Join Shared Game</button>
@@ -257,8 +272,20 @@
 
   <section id="game" class="panel">
     <div class="row viewer-only" id="viewerBar" style="align-items:center;background:#172554;border-radius:12px;padding:8px 12px;margin-bottom:10px">
-      <div class="small">Following as Viewer</div>
+      <div class="small" id="viewerBarLabel">Following as Viewer</div>
       <div class="controls"><button id="viewerPlanBtn">Game Plan</button><button id="viewerLeaveBtn">Leave Shared Game</button></div>
+    </div>
+    <div class="card coach-only" id="benchRequestCard" style="background:#172554;border:1px solid #f97316">
+      <div class="row">
+        <div>
+          <strong>Bench Coach proposes a sub</strong>
+          <div id="benchRequestDesc" class="small" style="margin-top:4px"></div>
+        </div>
+        <div class="controls">
+          <button class="good" id="approveSubRequestBtn">Approve</button>
+          <button class="danger" id="rejectSubRequestBtn">Decline</button>
+        </div>
+      </div>
     </div>
     <div class="card">
       <div class="row">
@@ -293,6 +320,10 @@
               <button id="changeSubBtn">Change Suggestion</button>
               <button id="skipSubBtn">Dismiss Reminder</button>
             </div>
+            <div class="controls bench-only" id="proposeSubControls" style="margin-top:8px">
+              <button id="proposeSubBtn" class="good">Propose This Sub</button>
+            </div>
+            <div id="benchRequestStatus" class="bench-only muted small" style="margin-top:6px"></div>
           </div>
         </div>
 
@@ -469,7 +500,7 @@
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,
       shareCode:"", lastAuditCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
       timerOwnerId:"", clockStartedAt:null, clockAnchorElapsed:0, testSpeed:1, soundEnabled:true,
-      coverLocks:{}, lastSubDesc:"", lastSubAt:0
+      coverLocks:{}, lastSubDesc:"", lastSubAt:0, pendingSubRequest:null
     };
   }
   function $(id){return document.getElementById(id)}
@@ -647,12 +678,12 @@
 
   function renderActiveGame(){
     const info=$("activeGameInfo");
-    const v=$("joinActiveViewerBtn"), c=$("joinActiveCoachBtn");
+    const v=$("joinActiveViewerBtn"), c=$("joinActiveCoachBtn"), be=$("joinActiveBenchBtn");
     if(!info||!v||!c) return;
 
     if(!activeGameCache){
       info.textContent="No active shared game right now.";
-      v.disabled=true;c.disabled=true;
+      v.disabled=true;c.disabled=true;if(be)be.disabled=true;
       return;
     }
 
@@ -664,7 +695,7 @@
       "Q"+(Number(g.quarter||0)+1)+" • "+fmt(elapsed)+" • "+
       "Team 71 "+Number(g.ourScore||0)+" – "+Number(g.theirScore||0)+" "+(g.opponent||"Opponent")+
       (stale ? "<br><span class='muted small'>This game looks stale ("+Math.floor(ageSec/60)+" min since update).</span>" : "");
-    v.disabled=false;c.disabled=false;
+    v.disabled=false;c.disabled=false;if(be)be.disabled=false;
   }
 
   async function joinActiveGame(role){
@@ -1125,7 +1156,7 @@
     }
   }
   async function createSharedGame(){
-    if(state.shareRole==="viewer") state.shareRole="coach";
+    if(state.shareRole!=="coach") state.shareRole="coach";
     state.shareCode=randomGameCode();
     state.syncVersion=0;
     save();
@@ -1153,11 +1184,22 @@
     save();renderAll();setSyncStatus("","Local only");
   }
   function canEdit(){
-    return state.shareRole!=="viewer";
+    return state.shareRole==="coach";
   }
   function guardEdit(){
     if(canEdit()) return true;
-    setStatus("Viewer mode: this phone follows the live game but cannot make changes.");
+    setStatus(state.shareRole==="bench"
+      ? "Bench Coach mode: propose a sub instead — the coach approves it."
+      : "Viewer mode: this phone follows the live game but cannot make changes.");
+    return false;
+  }
+  /** Bench Coach: can propose a substitution, never apply one directly. */
+  function canPropose(){
+    return state.shareRole==="bench";
+  }
+  function guardPropose(){
+    if(canPropose()) return true;
+    setStatus("Only the Bench Coach role can propose a sub.");
     return false;
   }
 
@@ -1231,7 +1273,7 @@
     "shareCode","shareRole","syncVersion","lastCloudUpdate","gameId",
     "running","timerOwnerId","clockStartedAt","clockAnchorElapsed","elapsed","quarter",
     "ended","awaitingQuarterTransition","testSpeed",
-    "play","gk"
+    "play","gk","pendingSubRequest"
   ];
 
   function pushUndo(label){
@@ -1817,11 +1859,50 @@
     }
     const jersey=state.homeAway==="home"?"home":"away";
     const positions={F:"posF",LB:"posLB",RB:"posRB",M:"posM",GK:"posGK"};
+    // Whichever swap is currently live — a coach's own suggestion, or a
+    // Bench Coach's proposal waiting on approval — flag its slots/players
+    // right on the field and bench, so "who's rotating in or out" is
+    // visible at a glance and not just in the text box above.
+    const nextMove=state.pendingSubRequest||state.suggestedSub;
+    const nextOutSlots=new Set(nextMove?nextMove.outgoingSlots:[]);
     Object.entries(positions).forEach(([slot,id])=>{
-      const p=state.lineup[slot],el=$(id);el.innerHTML='<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+(p?' • '+minfmt(state.play[p])+' min':'')+'</div>';
-      el.onclick=()=>{if(!canEdit()||state.ended){return}if(state.selectedBench)makeManualSub(state.selectedBench,slot)};
+      const p=state.lineup[slot],el=$(id);
+      const goals=p?(state.goals[p]||0):0;
+      const badge=goals>0?'<div class="goal-badge">'+goals+'</div>':'';
+      const outTag=nextOutSlots.has(slot)?'<div class="rotate-tag out">OUT next</div>':'';
+      el.innerHTML=badge+'<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+(p?' • '+minfmt(state.play[p])+' min':'')+'</div>'+outTag;
+      el.onclick=()=>{
+        if(state.ended || !state.selectedBench) return;
+        if(canEdit()) makeManualSub(state.selectedBench,slot);
+        else if(canPropose()) proposeManualSub(state.selectedBench,slot);
+      };
     });
-    renderBench();renderStatusPlayers();renderMinutes();renderGoals();renderSubSuggestion();
+    renderBench();renderStatusPlayers();renderMinutes();renderGoals();renderSubSuggestion();renderBenchRequest();
+  }
+
+  /**
+   * Coach-only Approve/Decline card and the Bench Coach's own "waiting for
+   * approval" status line — kept separate from renderSubSuggestion() above
+   * since a pending request (a manual proposal in particular) can exist
+   * even when there is no whole-bench suggestion to show.
+   */
+  function renderBenchRequest(){
+    const r=state.pendingSubRequest;
+    const desc=r ? r.incoming.map((p,i)=>p+" IN → "+r.outgoingPlayers[i]+" OUT").join(", ") : "";
+
+    const descBox=$("benchRequestDesc");
+    if(descBox) descBox.textContent=desc;
+
+    const proposeBtn=$("proposeSubBtn");
+    if(proposeBtn){
+      proposeBtn.disabled=!canPropose() || !!r || !state.suggestedSub || state.ended;
+    }
+    const statusBox=$("benchRequestStatus");
+    if(statusBox){
+      statusBox.textContent = r
+        ? "Waiting for the coach to approve: "+desc
+        : "";
+    }
   }
 
   function renderBench(){
@@ -1833,13 +1914,20 @@
       return;
     }
     const covered=Object.fromEntries(activeCoverLocks().map(([sub,l])=>[l.for,sub]));
+    // A Bench Coach can select a bench player the same way a coach does, to
+    // then tap a field position — the only difference is what happens on
+    // that second tap (propose vs. apply directly), gated in renderGame()'s
+    // position click handler above.
+    const canPick=canEdit()||canPropose();
+    const nextIn=new Set((state.pendingSubRequest||state.suggestedSub||{}).incoming||[]);
     list.forEach(p=>{
       targets.forEach(box=>{
         const b=document.createElement("button");
         b.className="bench-btn"+(state.selectedBench===p?" selected":"");
         const waiting=covered[p] ? " <span class='pill'>waiting on "+short(covered[p])+"</span>" : "";
-        b.innerHTML='<span>'+p+waiting+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
-        b.disabled=!canEdit();b.onclick=()=>{if(!guardEdit())return;state.selectedBench=state.selectedBench===p?null:p;renderBench()};
+        const inTag=nextIn.has(p) ? " <span class='pill next-in'>IN next</span>" : "";
+        b.innerHTML='<span>'+p+waiting+inTag+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
+        b.disabled=!canPick;b.onclick=()=>{if(!canPick)return;state.selectedBench=state.selectedBench===p?null:p;renderBench()};
         box.append(b);
       });
     });
@@ -2160,6 +2248,95 @@
     setStatus("Sub made: "+desc+". Clock continued running.");
   }
 
+  /**
+   * Bench Coach role (P0.2/P0.3-style): a Bench Coach can propose a sub, but
+   * never applies one directly — canEdit() is false for "bench", same as
+   * viewer, so every direct-apply path (makeManualSub, acceptSuggestedSub,
+   * goalie changes, ...) is already closed to it. Proposing only ever writes
+   * state.pendingSubRequest through the "request" sync domain, which is kept
+   * completely separate from "lineup" so a bench phone can never touch the
+   * live field — only the Primary Coach's approveSubRequest()/
+   * rejectSubRequest() below can change state.lineup.
+   */
+  function proposeWholeBenchSub(){
+    if(!guardPropose())return;
+    if(state.pendingSubRequest){setStatus("A request is already waiting for the coach.");return}
+    if(!state.suggestedSub){setStatus("No substitution to propose right now.");return}
+    const s=state.suggestedSub;
+    state.pendingSubRequest={
+      kind:"whole",
+      incoming:[...s.incoming],
+      outgoingPlayers:[...s.outgoingPlayers],
+      outgoingSlots:[...s.outgoingSlots],
+      requestedAt:displayElapsed()
+    };
+    const desc=s.incoming.map((p,i)=>p+" for "+s.outgoingPlayers[i]).join(", ");
+    actionSave(["request"]);
+    addAudit("Sub proposed","Bench Coach proposed: "+desc);
+    renderAll();
+    setStatus("Proposed: "+desc+" — waiting for the coach to approve.");
+  }
+
+  function proposeManualSub(incoming,slot){
+    if(!incoming||!guardPropose())return;
+    if(!slots.includes(slot))return;
+    if(state.pendingSubRequest){setStatus("A request is already waiting for the coach.");return}
+    const outgoing=state.lineup[slot];
+    state.pendingSubRequest={
+      kind:"manual",
+      incoming:[incoming],
+      outgoingPlayers:[outgoing],
+      outgoingSlots:[slot],
+      requestedAt:displayElapsed()
+    };
+    state.selectedBench=null;
+    actionSave(["request"]);
+    addAudit("Sub proposed",incoming+" for "+outgoing+(slot==="GK"?" at GK":""));
+    renderAll();
+    setStatus("Proposed "+incoming+" in for "+outgoing+" — waiting for the coach to approve.");
+  }
+
+  function approveSubRequest(){
+    if(!guardEdit())return;
+    const r=state.pendingSubRequest;
+    if(!r)return;
+
+    const wasRunning=settleClock();
+    pushUndo("approve bench sub request");
+
+    r.outgoingSlots.forEach((slot,i)=>{
+      if(!r.incoming[i])return;
+      state.lineup[slot]=r.incoming[i];
+      if(slot==="GK") state.goaliePlan[state.quarter]=r.incoming[i];
+    });
+    const desc=r.incoming.map((p,i)=>p+" for "+r.outgoingPlayers[i]).join(", ");
+    state.pendingSubRequest=null;
+    state.suggestedSub=null;
+    if(r.kind==="whole"){
+      state.subDone[Math.min(3,state.quarter)]=true;
+      state.nextSubAt=currentQuarterBoundary();
+      suggestSub(true);
+    }
+
+    setLastSub(desc+" (bench request approved)");
+    actionSave(wasRunning ? ["lineup","clock","stats","setup","request"] : ["lineup","setup","request"]);
+    addAudit("Sub request approved",desc);
+    renderAll();
+    setStatus("Approved: "+desc+".");
+  }
+
+  function rejectSubRequest(){
+    if(!guardEdit())return;
+    if(!state.pendingSubRequest)return;
+    pushUndo("decline bench sub request");
+    const r=state.pendingSubRequest;
+    const desc=r.incoming.map((p,i)=>p+" for "+r.outgoingPlayers[i]).join(", ");
+    state.pendingSubRequest=null;
+    actionSave(["request"]);
+    addAudit("Sub request declined",desc);
+    renderAll();
+    setStatus("Declined the proposed sub.");
+  }
 
   function skipScheduledSub(){
     if(!guardEdit()) return;
@@ -2652,12 +2829,18 @@
 
     const viewer=!canEdit();
 
-    // A viewer's phone gets one simplified page — the live game plus recent
-    // activity — instead of the coach's full tab set. There's nothing to
-    // edit on Pregame/History/Backup, and switching tabs to find "what just
-    // happened" is exactly the confusion a viewer reported.
+    // A viewer's (and Bench Coach's) phone gets one simplified page — the
+    // live game plus recent activity — instead of the coach's full tab set.
+    // There's nothing to edit on Pregame/History/Backup, and switching tabs
+    // to find "what just happened" is exactly the confusion a viewer
+    // reported. Bench Coach additionally gets its own propose-a-sub
+    // controls (.bench-only), which Viewer never sees.
     document.body.classList.toggle("viewer-mode",viewer);
+    document.body.classList.toggle("bench-mode",state.shareRole==="bench");
+    document.body.classList.toggle("has-bench-request",!!state.pendingSubRequest);
     if(viewer && !$("game").classList.contains("active")) showTab("game");
+    if($("viewerBarLabel")) $("viewerBarLabel").textContent=
+      state.shareRole==="bench" ? "Following as Bench Coach" : "Following as Viewer";
 
     // Controls whose only restriction is Coach vs Viewer.
     ["buildPlanBtn","clearGoaliesBtn","regenerateLineupBtn","newGameBtn","undoBtn","allAvailableBtn","historyNewGameBtn",
@@ -2727,6 +2910,9 @@
   $("regenerateLineupBtn").onclick=regenerateLineup;
   $("clearGoaliesBtn").onclick=clearGoaliePlan;$("startPauseBtn").onclick=startPause;$("nextQuarterBtn").onclick=nextQuarter;$("endGameBtn").onclick=endGame;$("undoBtn").onclick=undo;
   $("acceptSubBtn").onclick=acceptSuggestedSub;$("changeSubBtn").onclick=()=>{state.suggestedSub=null;suggestSub(true);actionSave(["lineup"]);renderSubSuggestion()};$("skipSubBtn").onclick=skipScheduledSub;
+  $("proposeSubBtn").onclick=proposeWholeBenchSub;
+  $("approveSubRequestBtn").onclick=approveSubRequest;
+  $("rejectSubRequestBtn").onclick=rejectSubRequest;
   $("oppGoalBtn").onclick=oppGoal;$("undoGoalBtn").onclick=undoLastGoal;$("startNextQuarterBtn").onclick=startNextQuarter;$("closeQuarterBtn").onclick=()=>$("quarterModal").classList.remove("show");
   $("replaceLaterBtn").onclick=()=>$("replaceModal").classList.remove("show");
   $("printPlanBtn").onclick=openGamePlanPrint;
@@ -2746,6 +2932,7 @@
   $("refreshAuditBtn").onclick=loadAudit;
   $("clearActiveBtn").onclick=clearActiveGame;
   $("joinActiveViewerBtn").onclick=()=>joinActiveGame("viewer");
+  $("joinActiveBenchBtn").onclick=()=>joinActiveGame("bench");
   $("joinActiveCoachBtn").onclick=()=>joinActiveGame("coach");
   $("soundToggle").onchange=e=>{state.soundEnabled=!!e.target.checked;unlockAudio();save()};
   $("testSpeedBtn").onclick=cycleTestSpeed;
