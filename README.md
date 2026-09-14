@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v35 FIELDHUD
+# Team 71 Game Manager — v36 FIELDBAR
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,9 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v35:** see [`V35_FIELDHUD.md`](V35_FIELDHUD.md)
-- **Earlier changes:** [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md),
+- **What changed in v36:** see [`V36_FIELDBAR.md`](V36_FIELDBAR.md)
+- **Earlier changes:** [`V35_FIELDHUD.md`](V35_FIELDHUD.md),
+  [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md),
   [`V33_PRINTFIX.md`](V33_PRINTFIX.md) (incomplete — see V34),
   [`V32_SCHEDULE.md`](V32_SCHEDULE.md), [`V31_CLEAN.md`](V31_CLEAN.md),
   [`V30_BENCH.md`](V30_BENCH.md) (mostly reverted — see V31),
@@ -23,10 +24,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v35 FIELDHUD
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v36 FIELDBAR
 ```
 
-Worth a glance before every game. If it does not say `v35 FIELDHUD`, the deploy
+Worth a glance before every game. If it does not say `v36 FIELDBAR`, the deploy
 did not land and you are running older code.
 
 ---
@@ -100,13 +101,14 @@ did not land and you are running older code.
 
 **Game tab**
 
-- One card holds the whole picture: the **scoreboard** (team names on top,
-  score underneath) sits above the **field**, with the quarter ("Q1", "Q2",
-  …) badged in the field's bottom-left corner and the clock in the
-  bottom-right — score, positions, and time left all in one glance instead
-  of scattered across separate cards. The big number is the **quarter**
-  clock, resetting to 0:00 each quarter; total game time is the smaller line
-  under it.
+- One card holds the whole picture: the score, the field, and the clock are
+  one graphic — the **scoreboard** (team names on top, score underneath) is
+  a bar flush with the field's own top edge, and the quarter ("Q1", "Q2", …)
+  and clock share a matching bar flush with the bottom edge, so both read as
+  part of the field itself rather than badges floating on top of it. Score,
+  positions, and time left are all in one glance instead of scattered across
+  separate cards. The big number is the **quarter** clock, resetting to 0:00
+  each quarter; total game time is the smaller line next to it.
 - **Goalie Rotation — Full Game** sits below the field now — useful as a
   reference, not something you need to check every few seconds.
 - The clock stops only when you tap Pause, when a quarter ends, or when you tap

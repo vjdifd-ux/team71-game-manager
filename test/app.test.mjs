@@ -1456,17 +1456,17 @@ test("the field shows five positions with names and minutes", async () => {
   app.close();
 });
 
-test("the clock and quarter are shown right on the field, and the field comes before Goalie Rotation", async () => {
+test("the score, clock and quarter are shown right on the field, and the field comes before Goalie Rotation", async () => {
   const app = await readyGame();
   const field = app.doc.querySelector(".field");
   assert.ok(field.contains(app.$("quarterLabel")), "quarter badge sits on the field itself");
   assert.ok(field.contains(app.$("timer")), "clock sits on the field itself");
-  assert.ok(app.$("quarterLabel").classList.contains("field-hud"));
-  assert.ok(app.$("quarterLabel").parentElement === field || app.$("quarterLabel").closest(".field") === field);
+  assert.ok(field.contains(app.$("ourScore")), "score sits on the field itself");
+  assert.ok(app.$("quarterLabel").closest(".field-bar") === app.$("quarterLabel").closest(".field").querySelector(".field-bar.bottom"));
+  assert.ok(app.$("ourScore").closest(".field-bar") === field.querySelector(".field-bar.top"), "score lives in the top field-bar, not a separate scoreboard above the field");
 
   // One visual: score, field, and clock/quarter all in the same card.
   const fieldCard = field.closest(".card");
-  assert.ok(fieldCard.querySelector(".scoreboard"), "score sits in the same card as the field");
 
   // Goalie Rotation is a reference, not something to check constantly —
   // it now comes after the field card, not before it.
@@ -1617,8 +1617,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v35 so the deployed build is identifiable", async () => {
+test("the version banner says v36 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v35 FIELDHUD/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v36 FIELDBAR/);
   app.close();
 });

@@ -1,3 +1,7 @@
+> **Refined — see V36.** The corner HUD badges described below were replaced
+> in v36 with full-width bars flush with the field's own edges. See
+> [`V36_FIELDBAR.md`](V36_FIELDBAR.md).
+
 # v35 FIELDHUD — what changed and why
 
 Baseline: the v34 PRINTLAYOUT package. Continuing the field-view cleanup

@@ -59,20 +59,22 @@
       .player-row>*{width:100%}
     }
     .score{font-size:1.75rem;font-weight:800}.timer{font-size:3rem;font-weight:900;letter-spacing:.03em}
-    .scoreboard{display:flex;align-items:center;justify-content:center;gap:14px;background:#0f172a;border-radius:14px;padding:14px 10px}
-    .scoreboard .team{flex:1;min-width:0;text-align:center}
-    .scoreboard .team-name{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .scoreboard .team-score{font-size:2.5rem;font-weight:900;line-height:1.15}
-    .scoreboard .team.us .team-score{color:var(--accent)}
-    .scoreboard .sep{font-size:1.4rem;font-weight:800;color:var(--muted)}
-    /* Clock and quarter live right on the field itself — one glance covers
-       score (above), positions, and time left, instead of three places. */
-    .field-hud{position:absolute;bottom:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:8px;padding:4px 9px;text-align:center;line-height:1.15}
-    .field-hud.bl{left:8px}
-    .field-hud.br{right:8px}
-    .field-hud .timer{font-size:1.35rem;font-weight:900;letter-spacing:.02em}
-    .field-hud .muted{color:#cbd5e1}
-    .field-hud .pill{margin-top:4px;font-size:.62rem;white-space:normal}
+    /* The scoreboard and the clock/quarter are bars flush with the field's
+       own top and bottom edges — not floating badges with gaps around them —
+       so .field's own border-radius + overflow:hidden clips their outer
+       corners to match the field exactly and they read as one graphic. */
+    .field-bar{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.6);padding:6px 12px;z-index:2}
+    .field-bar.top{top:0}
+    .field-bar.bottom{bottom:0}
+    .field-bar .team{flex:1;min-width:0;text-align:center}
+    .field-bar .team-name{font-size:.65rem;font-weight:700;color:#cbd5e1;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .field-bar .team-score{font-size:2.5rem;font-weight:900;line-height:1}
+    .field-bar .team.us .team-score{color:#60a5fa}
+    .field-bar .sep{font-size:1.3rem;font-weight:800;color:#94a3b8;padding:0 6px}
+    .field-bar .timer{font-size:1.3rem;font-weight:900;line-height:1;letter-spacing:.02em}
+    .field-bar .muted{color:#cbd5e1;font-size:.65rem}
+    .field-bar #quarterLabel{font-size:.85rem}
+    .field-bar .pill{display:block;margin-top:2px;font-size:.6rem;font-weight:600;white-space:normal;line-height:1.25}
     .game-layout{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
     @media(max-width:900px){.game-layout{grid-template-columns:1fr}}
     .field{position:relative;aspect-ratio:4/5;border-radius:18px;overflow:hidden;background:
@@ -181,7 +183,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v35 FIELDHUD</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v36 FIELDBAR</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -302,21 +304,23 @@
         </div>
 
         <div class="card">
-          <div class="scoreboard">
-            <div class="team us"><div class="team-name">Team 71</div><div class="team-score" id="ourScore">0</div></div>
-            <div class="sep">–</div>
-            <div class="team"><div class="team-name" id="oppName">Team 72</div><div class="team-score" id="theirScore">0</div></div>
-          </div>
-          <div class="field-stage" style="margin-top:10px">
+          <div class="field-stage">
             <div class="field">
+              <div class="field-bar top">
+                <div class="team us"><div class="team-name">Team 71</div><div class="team-score" id="ourScore">0</div></div>
+                <div class="sep">–</div>
+                <div class="team"><div class="team-name" id="oppName">Team 72</div><div class="team-score" id="theirScore">0</div></div>
+              </div>
               <div class="box top"></div><div class="half"></div><div class="circle"></div><div class="box bottom"></div>
-              <div class="fp" id="posF" data-slot="F" style="left:50%;top:20%"></div>
+              <div class="fp" id="posF" data-slot="F" style="left:50%;top:25%"></div>
               <div class="fp" id="posLB" data-slot="LB" style="left:28%;top:50%"></div>
               <div class="fp" id="posRB" data-slot="RB" style="left:72%;top:50%"></div>
               <div class="fp" id="posM" data-slot="M" style="left:50%;top:66%"></div>
-              <div class="fp" id="posGK" data-slot="GK" style="left:50%;top:86%"></div>
-              <div class="field-hud bl" id="quarterLabel"><strong>Q1</strong></div>
-              <div class="field-hud br"><div id="timer" class="timer">00:00</div><div id="totalTimer" class="muted small">Game 00:00</div></div>
+              <div class="fp" id="posGK" data-slot="GK" style="left:50%;top:78%"></div>
+              <div class="field-bar bottom">
+                <div id="quarterLabel"><strong>Q1</strong></div>
+                <div><span id="timer" class="timer">00:00</span> <span id="totalTimer" class="muted small">Game 00:00</span></div>
+              </div>
             </div>
             <div class="bench-side">
               <h4>Sideline Bench</h4>
