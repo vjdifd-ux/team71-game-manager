@@ -1444,14 +1444,14 @@ test("the idle poll cadence is 10s, not 5s", async () => {
 
 /* ============================================================= rendering */
 
-test("the field shows five positions with names and minutes", async () => {
+test("the field shows five positions with names, and keeps each marker short enough not to collide with its neighbors", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
   await run(app, 300);
   for (const id of ["posGK", "posLB", "posRB", "posM", "posF"]) {
     const txt = app.$(id).textContent;
     assert.ok(!txt.includes("Empty"), id + " should hold a player");
-    assert.match(txt, /\d/, id + " should show minutes");
+    assert.doesNotMatch(txt, /\d/, id + " no longer shows minutes on the field marker itself — every marker needs to stay short so five of them plus the score/clock bars all fit on the field without overlapping; minutes are still visible in the bench list and the minutes table");
   }
   app.close();
 });
