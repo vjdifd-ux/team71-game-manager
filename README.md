@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v34 PRINTLAYOUT
+# Team 71 Game Manager — v35 FIELDHUD
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,9 +8,10 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v34:** see [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md)
-- **Earlier changes:** [`V33_PRINTFIX.md`](V33_PRINTFIX.md) (incomplete —
-  see V34), [`V32_SCHEDULE.md`](V32_SCHEDULE.md), [`V31_CLEAN.md`](V31_CLEAN.md),
+- **What changed in v35:** see [`V35_FIELDHUD.md`](V35_FIELDHUD.md)
+- **Earlier changes:** [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md),
+  [`V33_PRINTFIX.md`](V33_PRINTFIX.md) (incomplete — see V34),
+  [`V32_SCHEDULE.md`](V32_SCHEDULE.md), [`V31_CLEAN.md`](V31_CLEAN.md),
   [`V30_BENCH.md`](V30_BENCH.md) (mostly reverted — see V31),
   [`V29_SHEET.md`](V29_SHEET.md), [`V28_LINEUP.md`](V28_LINEUP.md),
   [`V27_TOUCH.md`](V27_TOUCH.md), [`V26_ROSTER.md`](V26_ROSTER.md),
@@ -22,10 +23,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v34 PRINTLAYOUT
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v35 FIELDHUD
 ```
 
-Worth a glance before every game. If it does not say `v34 PRINTLAYOUT`, the deploy
+Worth a glance before every game. If it does not say `v35 FIELDHUD`, the deploy
 did not land and you are running older code.
 
 ---
@@ -99,10 +100,15 @@ did not land and you are running older code.
 
 **Game tab**
 
-- Score is front and center in its own scoreboard strip; the clock and
-  quarter (just "Q1", "Q2", …) sit to the right of it.
-- The big timer is the **quarter** clock, resetting to 0:00 each quarter. Total
-  game time is underneath.
+- One card holds the whole picture: the **scoreboard** (team names on top,
+  score underneath) sits above the **field**, with the quarter ("Q1", "Q2",
+  …) badged in the field's bottom-left corner and the clock in the
+  bottom-right — score, positions, and time left all in one glance instead
+  of scattered across separate cards. The big number is the **quarter**
+  clock, resetting to 0:00 each quarter; total game time is the smaller line
+  under it.
+- **Goalie Rotation — Full Game** sits below the field now — useful as a
+  reference, not something you need to check every few seconds.
 - The clock stops only when you tap Pause, when a quarter ends, or when you tap
   End Period. The 6:00 mark is a reminder, never a forced stop — the reminder
   card starts flashing once you're past it and the rotation still isn't done.
@@ -152,7 +158,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                142 tests — see below
+test/                143 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -177,7 +183,7 @@ npm install
 npm test
 ```
 
-142 tests, about 20 seconds, no network or Cloudflare account required.
+143 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

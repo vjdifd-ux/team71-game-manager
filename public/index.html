@@ -65,6 +65,14 @@
     .scoreboard .team-score{font-size:2.5rem;font-weight:900;line-height:1.15}
     .scoreboard .team.us .team-score{color:var(--accent)}
     .scoreboard .sep{font-size:1.4rem;font-weight:800;color:var(--muted)}
+    /* Clock and quarter live right on the field itself — one glance covers
+       score (above), positions, and time left, instead of three places. */
+    .field-hud{position:absolute;bottom:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:8px;padding:4px 9px;text-align:center;line-height:1.15}
+    .field-hud.bl{left:8px}
+    .field-hud.br{right:8px}
+    .field-hud .timer{font-size:1.35rem;font-weight:900;letter-spacing:.02em}
+    .field-hud .muted{color:#cbd5e1}
+    .field-hud .pill{margin-top:4px;font-size:.62rem;white-space:normal}
     .game-layout{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
     @media(max-width:900px){.game-layout{grid-template-columns:1fr}}
     .field{position:relative;aspect-ratio:4/5;border-radius:18px;overflow:hidden;background:
@@ -173,7 +181,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v34 PRINTLAYOUT</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v35 FIELDHUD</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -267,16 +275,7 @@
       <div class="controls"><button id="viewerPlanBtn">Game Plan</button><button id="viewerLeaveBtn">Leave Shared Game</button></div>
     </div>
     <div class="card">
-      <div class="scoreboard">
-        <div class="team us"><div class="team-name">Team 71</div><div class="team-score" id="ourScore">0</div></div>
-        <div class="sep">–</div>
-        <div class="team"><div class="team-name" id="oppName">Team 72</div><div class="team-score" id="theirScore">0</div></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div class="muted small" id="gameLabel">Team 71 vs Team 72</div>
-        <div style="text-align:right"><div id="quarterLabel"><strong>Q1</strong></div><div id="timer" class="timer">00:00</div><div id="totalTimer" class="muted small">Game 00:00</div></div>
-      </div>
-      <div class="controls coach-only" style="margin-top:10px">
+      <div class="controls coach-only">
         <button class="primary" id="startPauseBtn">Start</button>
         <button class="warn" id="nextQuarterBtn">Next Quarter / Set Lineup</button>
         <button class="danger" id="endGameBtn">End Game</button>
@@ -302,15 +301,13 @@
           </div>
         </div>
 
-
         <div class="card">
-          <div class="row"><strong>Goalie Rotation — Full Game</strong><span class="muted small">Current period highlighted</span></div>
-          <div id="gameGoalieStrip" class="goalie-strip"></div>
-        </div>
-
-        <div class="card">
-          <div class="row"><strong>Field</strong><span class="muted small">Tap a bench player, then tap any field position — including goalie</span></div>
-          <div class="field-stage">
+          <div class="scoreboard">
+            <div class="team us"><div class="team-name">Team 71</div><div class="team-score" id="ourScore">0</div></div>
+            <div class="sep">–</div>
+            <div class="team"><div class="team-name" id="oppName">Team 72</div><div class="team-score" id="theirScore">0</div></div>
+          </div>
+          <div class="field-stage" style="margin-top:10px">
             <div class="field">
               <div class="box top"></div><div class="half"></div><div class="circle"></div><div class="box bottom"></div>
               <div class="fp" id="posF" data-slot="F" style="left:50%;top:20%"></div>
@@ -318,6 +315,8 @@
               <div class="fp" id="posRB" data-slot="RB" style="left:72%;top:50%"></div>
               <div class="fp" id="posM" data-slot="M" style="left:50%;top:66%"></div>
               <div class="fp" id="posGK" data-slot="GK" style="left:50%;top:86%"></div>
+              <div class="field-hud bl" id="quarterLabel"><strong>Q1</strong></div>
+              <div class="field-hud br"><div id="timer" class="timer">00:00</div><div id="totalTimer" class="muted small">Game 00:00</div></div>
             </div>
             <div class="bench-side">
               <h4>Sideline Bench</h4>
@@ -325,6 +324,11 @@
               <div id="benchSide"></div>
             </div>
           </div>
+        </div>
+
+        <div class="card">
+          <div class="row"><strong>Goalie Rotation — Full Game</strong><span class="muted small">Current period highlighted</span></div>
+          <div id="gameGoalieStrip" class="goalie-strip"></div>
         </div>
 
         <div class="card coach-only">
@@ -1826,7 +1830,6 @@
 
   function renderGame(){
     if($("soundToggle")) $("soundToggle").checked=state.soundEnabled!==false;
-    $("gameLabel").textContent="Team 71 vs "+state.opponent;
     $("oppName").textContent=state.opponent;$("ourScore").textContent=state.ourScore;$("theirScore").textContent=state.theirScore;$("quickUs").textContent=state.ourScore;$("quickThem").textContent=state.theirScore;
     const atQuarterStart = !state.running && state.elapsed===state.quarter*QLEN && state.elapsed>0;
     $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+"</strong>"+

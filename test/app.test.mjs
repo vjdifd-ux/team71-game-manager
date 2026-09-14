@@ -1456,6 +1456,27 @@ test("the field shows five positions with names and minutes", async () => {
   app.close();
 });
 
+test("the clock and quarter are shown right on the field, and the field comes before Goalie Rotation", async () => {
+  const app = await readyGame();
+  const field = app.doc.querySelector(".field");
+  assert.ok(field.contains(app.$("quarterLabel")), "quarter badge sits on the field itself");
+  assert.ok(field.contains(app.$("timer")), "clock sits on the field itself");
+  assert.ok(app.$("quarterLabel").classList.contains("field-hud"));
+  assert.ok(app.$("quarterLabel").parentElement === field || app.$("quarterLabel").closest(".field") === field);
+
+  // One visual: score, field, and clock/quarter all in the same card.
+  const fieldCard = field.closest(".card");
+  assert.ok(fieldCard.querySelector(".scoreboard"), "score sits in the same card as the field");
+
+  // Goalie Rotation is a reference, not something to check constantly —
+  // it now comes after the field card, not before it.
+  const cards = [...app.doc.querySelectorAll("#game .game-layout .card")];
+  const fieldIndex = cards.indexOf(fieldCard);
+  const goalieIndex = cards.findIndex((c) => c.textContent.includes("Goalie Rotation"));
+  assert.ok(fieldIndex >= 0 && goalieIndex > fieldIndex, "Goalie Rotation now comes after the field");
+  app.close();
+});
+
 test("the live minutes table lists every present player", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
@@ -1596,8 +1617,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v34 so the deployed build is identifiable", async () => {
+test("the version banner says v35 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v34 PRINTLAYOUT/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v35 FIELDHUD/);
   app.close();
 });
