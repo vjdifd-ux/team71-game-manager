@@ -1,4 +1,4 @@
-const CACHE='team71-v30-bench';
+const CACHE='team71-v31-clean';
 const STATIC=['./manifest.json','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{

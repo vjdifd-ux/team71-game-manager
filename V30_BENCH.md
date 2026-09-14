@@ -1,5 +1,13 @@
 # v30 BENCH — what changed and why
 
+> **Reverted in v31 CLEAN.** Real usage turned up clock-sync problems and
+> UI overlap, and the coach-approval workflow was more machinery than
+> wanted — a plain read-only Viewer page was the actual ask. The Bench
+> Coach role, propose/approve flow, and `pendingSubRequest` described below
+> no longer exist. The goal-badge and OUT next/IN next field tags survived
+> the revert and are still live — see `V31_CLEAN.md`. Kept here as a
+> historical record only.
+
 Baseline: the v29 SHEET package. The ask: clean up the Viewer/bench-coach
 side of the app around the field view, and give a second sideline adult a
 real role — one who can flag a substitution without being able to just make

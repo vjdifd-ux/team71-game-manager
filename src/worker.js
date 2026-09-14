@@ -50,8 +50,7 @@ const DOMAIN_FIELDS = {
   score:  ["goals", "ourScore", "theirScore", "goalLog"],
   clock:  ["elapsed", "quarter", "running", "ended", "timerOwnerId", "clockStartedAt",
            "clockAnchorElapsed", "awaitingQuarterTransition", "testSpeed"],
-  stats:  ["play", "gk", "posPlay"],
-  request: ["pendingSubRequest"]
+  stats:  ["play", "gk", "posPlay"]
 };
 /** Always carried, whatever changed. */
 const ALWAYS_FIELDS = ["soundEnabled"];

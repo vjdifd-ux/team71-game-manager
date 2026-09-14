@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v30 BENCH
+# Team 71 Game Manager — v31 CLEAN
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,9 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v30:** see [`V30_BENCH.md`](V30_BENCH.md)
-- **Earlier changes:** [`V29_SHEET.md`](V29_SHEET.md), [`V28_LINEUP.md`](V28_LINEUP.md),
+- **What changed in v31:** see [`V31_CLEAN.md`](V31_CLEAN.md)
+- **Earlier changes:** [`V30_BENCH.md`](V30_BENCH.md) (mostly reverted — see
+  V31), [`V29_SHEET.md`](V29_SHEET.md), [`V28_LINEUP.md`](V28_LINEUP.md),
   [`V27_TOUCH.md`](V27_TOUCH.md), [`V26_ROSTER.md`](V26_ROSTER.md),
   [`V25_PRINT.md`](V25_PRINT.md), [`V24_SIDELINE.md`](V24_SIDELINE.md),
   [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
@@ -19,10 +20,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v30 BENCH
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v31 CLEAN
 ```
 
-Worth a glance before every game. If it does not say `v30 BENCH`, the deploy
+Worth a glance before every game. If it does not say `v31 CLEAN`, the deploy
 did not land and you are running older code.
 
 ---
@@ -71,33 +72,25 @@ did not land and you are running older code.
 **Sharing with the second phone**
 
 - Coach A taps **Create Shared Game**.
-- Coach B (or a third phone) opens the app; the live game appears under
-  *Active Team 71 Game* within about ten seconds. Three roles:
-  - **Coach** — full control, same as Coach A.
-  - **Bench Coach** — sees the same simplified live-game page as Viewer, plus
-    the ability to *propose* a substitution (the whole-bench suggestion, or a
-    manual tap-a-player-then-a-position sub). A proposal never touches the
-    field by itself — it shows up on the Primary Coach's phone as **Approve**
-    / **Decline**, and only Approve actually applies it. Good for a second
-    adult on the sideline who's watching subs closely but shouldn't be the
-    one deciding alone.
-  - **Viewer** — follows along, fully read-only.
-- Only the phone that started the clock owns it. The other phones cannot
-  pause or restart it, which is deliberate — one official clock.
-- The Primary Coach's phone can record goals and make substitutions directly.
-  Changes are merged by domain, so a substitution on one phone never disturbs
-  the clock on another.
-- A Viewer's or Bench Coach's phone shows one simplified page — score,
-  clock, field, bench, goalie rotation, and recent activity — instead of the
-  coach's full tab set, since there's nothing to edit on
-  Pregame/History/Backup. Each field position shows a small badge for goals
-  already scored, and — whenever a substitution is due or proposed — an
-  **OUT next** tag on the field and an **IN next** tag on the bench, so
-  who's rotating is visible without reading a separate box. A **Last sub**
-  banner stays on screen after every substitution so a name changing on the
-  field is never a silent surprise. A small bar at the top has **Game Plan**
-  (opens the same printable sheet) and **Leave Shared Game**, so neither
-  phone is ever stuck with no way back to Pregame.
+- Coach B opens the app; the live game appears under *Active Team 71 Game* within
+  about ten seconds. Tap **Join as Coach** (can make changes) or **Join as
+  Viewer** (follows along, read-only, for a second adult on the sideline or
+  a parent watching from the stands).
+- Only the phone that started the clock owns it. The other phone cannot pause or
+  restart it, which is deliberate — one official clock.
+- Both phones can record goals and make substitutions. Changes are merged by
+  domain, so a substitution on one phone never disturbs the clock on the other.
+- A Viewer's phone shows one simplified page — score on top, clock, field,
+  bench, goalie rotation, and recent activity — instead of the coach's full
+  tab set, since there's nothing to edit on Pregame/History/Backup. Each
+  field position shows a small badge for goals already scored, and — when a
+  substitution is due — an **OUT next** tag on the field and an **IN next**
+  tag on the bench, so who's rotating is visible without reading a separate
+  box. A **Last sub** banner stays on screen after every substitution so a
+  name changing on the field is never a silent surprise. A small bar at the
+  top has **Game Plan** (opens the same printable/downloadable sheet) and
+  **Leave Shared Game**, so a Viewer's phone is never stuck with no way back
+  to Pregame.
 
 **Game tab**
 
@@ -151,7 +144,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                141 tests — see below
+test/                136 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -176,7 +169,7 @@ npm install
 npm test
 ```
 
-141 tests, about 20 seconds, no network or Cloudflare account required.
+136 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

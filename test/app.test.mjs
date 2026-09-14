@@ -1186,101 +1186,7 @@ test("a viewer can open the game plan sheet without leaving viewer mode", async 
   a.close(); b.close();
 });
 
-/* ==================================================== Bench Coach + requests */
-
-test("a Bench Coach phone gets the simplified view and propose controls, not full coach controls", async () => {
-  const backend = makeBackend();
-  const a = await readyGame({ backend });
-  await a.click("createShareBtn");
-  const b = await openApp({ backend });
-  await b.click("joinActiveBenchBtn");
-
-  assert.equal(b.state().shareRole, "bench");
-  assert.ok(b.doc.body.classList.contains("viewer-mode"), "same simplified page as Viewer");
-  assert.ok(b.doc.body.classList.contains("bench-mode"));
-  for (const id of ["startPauseBtn", "endGameBtn", "nextQuarterBtn", "undoBtn", "oppGoalBtn", "acceptSubBtn"]) {
-    assert.equal(b.$(id).disabled, true, id + " must stay locked for Bench Coach too");
-  }
-  assert.notEqual(b.win.getComputedStyle(b.$("proposeSubControls")).display, "none");
-  assert.equal(b.$("proposeSubBtn").disabled, false, "there is a suggestion available to propose");
-  a.close(); b.close();
-});
-
-test("a Viewer, unlike a Bench Coach, gets no propose controls at all", async () => {
-  const backend = makeBackend();
-  const a = await readyGame({ backend });
-  await a.click("createShareBtn");
-  const b = await openApp({ backend });
-  await b.click("joinActiveViewerBtn");
-  assert.equal(b.win.getComputedStyle(b.$("proposeSubControls")).display, "none");
-  a.close(); b.close();
-});
-
-test("a Bench Coach's proposed sub only applies once the coach approves it", async () => {
-  const backend = makeBackend();
-  const a = await readyGame({ backend });
-  await a.click("createShareBtn");
-  const b = await openApp({ backend });
-  await b.click("joinActiveBenchBtn");
-  await b.pump(2000);
-
-  const before = a.state().lineup;
-  await b.click("proposeSubBtn");
-  assert.ok(b.state().pendingSubRequest, "the phone that proposed sees its own request");
-  assert.deepEqual(b.state().lineup, before, "proposing never touches the field on the bench phone either");
-
-  await a.pump(2000);
-  assert.ok(a.state().pendingSubRequest, "the request reaches the coach");
-  assert.deepEqual(a.state().lineup, before, "not applied yet — it still needs approval");
-
-  await a.click("approveSubRequestBtn");
-  assert.notDeepEqual(a.state().lineup, before, "approving actually applies the swap");
-  assert.equal(a.state().pendingSubRequest, null);
-
-  await b.pump(2000);
-  assert.deepEqual(b.state().lineup, a.state().lineup, "the approved lineup reaches the bench phone too");
-  assert.equal(b.state().pendingSubRequest, null);
-  a.close(); b.close();
-});
-
-test("the coach can decline a Bench Coach's proposed sub, leaving the field untouched", async () => {
-  const backend = makeBackend();
-  const a = await readyGame({ backend });
-  await a.click("createShareBtn");
-  const b = await openApp({ backend });
-  await b.click("joinActiveBenchBtn");
-  await b.pump(2000);
-
-  const before = a.state().lineup;
-  await b.click("proposeSubBtn");
-  await a.pump(2000);
-  assert.ok(a.state().pendingSubRequest);
-
-  await a.click("rejectSubRequestBtn");
-  assert.equal(a.state().pendingSubRequest, null);
-  assert.deepEqual(a.state().lineup, before, "declining never changes the field");
-  a.close(); b.close();
-});
-
-test("a Bench Coach can propose a single manual sub the same way a coach makes one", async () => {
-  const backend = makeBackend();
-  const a = await readyGame({ backend });
-  await a.click("createShareBtn");
-  const b = await openApp({ backend });
-  await b.click("joinActiveBenchBtn");
-  await b.pump(2000);
-
-  const plannedF = b.state().lineup.F;
-  const onField = b.onField();
-  const incoming = roster.find((p) => !onField.includes(p));
-  await b.manualSub(incoming, "F");
-
-  assert.ok(b.state().pendingSubRequest, "a manual tap creates a request, not a direct change");
-  assert.equal(b.state().pendingSubRequest.kind, "manual");
-  assert.deepEqual(b.state().pendingSubRequest.incoming, [incoming]);
-  assert.equal(b.state().lineup.F, plannedF, "the field is untouched until the coach approves");
-  a.close(); b.close();
-});
+/* ============================================ shared field view enhancements */
 
 test("a goal shows as a badge on top of the scorer's shirt", async () => {
   const app = await readyGame();
@@ -1623,8 +1529,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v30 so the deployed build is identifiable", async () => {
+test("the version banner says v31 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v30 BENCH/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v31 CLEAN/);
   app.close();
 });
