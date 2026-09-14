@@ -166,7 +166,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                143 tests — see below
+test/                146 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -191,7 +191,7 @@ npm install
 npm test
 ```
 
-143 tests, about 20 seconds, no network or Cloudflare account required.
+146 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

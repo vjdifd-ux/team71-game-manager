@@ -1124,7 +1124,12 @@
       const remote=await r.json();
       if((remote.syncVersion||0) > (state.syncVersion||0)){
         applyingRemote=true;
-        const localShare={shareCode:state.shareCode,shareRole:state.shareRole};
+        // Which bench player you've tapped is this phone's own in-progress
+        // intent, never pushed to the server (and no longer even a synced
+        // field) - it must survive a remote snapshot the same way the local
+        // clock does below, or a routine 2-second poll wipes out a selection
+        // mid-tap before you can pick the position she's subbing into.
+        const localShare={shareCode:state.shareCode,shareRole:state.shareRole,selectedBench:state.selectedBench};
         const ownsTimer=state.running && state.timerOwnerId===CLIENT_ID && remote.timerOwnerId===CLIENT_ID;
         const localClock=ownsTimer ? {
           elapsed:state.elapsed, play:state.play, gk:state.gk, posPlay:state.posPlay,

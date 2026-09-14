@@ -155,7 +155,7 @@ The app is an installed PWA with a service worker. After a deploy:
 ```bash
 npm install
 npm run dev      # wrangler dev, against a local D1
-npm test         # 143 tests, no network or Cloudflare account needed
+npm test         # 146 tests, no network or Cloudflare account needed
 npm run tail     # live logs from the deployed Worker
 ```
 

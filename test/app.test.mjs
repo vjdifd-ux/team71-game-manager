@@ -1170,6 +1170,26 @@ test("two phones: coach B's substitution does not disturb coach A's running cloc
   a.close(); b.close();
 });
 
+test("REGRESSION: selecting a bench player to sub does not get wiped out by the next sync poll", async () => {
+  const backend = makeBackend();
+  const a = await readyGame({ backend });
+  await a.click("createShareBtn");
+  const b = await openApp({ backend });
+  await b.click("joinActiveCoachBtn");
+
+  const bench = a.state().goaliePlan ? Object.keys(a.state().play).find((p) => !a.onField().includes(p)) : null;
+  await a.selectBench(bench);
+  assert.equal(a.state().selectedBench, bench, "sanity: the tap registered");
+
+  // Coach B does something unrelated that bumps the shared syncVersion, so
+  // A's next routine poll (every 2s) has a newer remote snapshot to pull.
+  await b.scoreGoal(b.state().lineup.F);
+  await a.pump(2000);
+
+  assert.equal(a.state().selectedBench, bench, "A's own in-progress selection must survive a background sync pull");
+  a.close(); b.close();
+});
+
 test("two phones: the second coach cannot hijack a clock the first phone owns", async () => {
   const backend = makeBackend();
   const a = await readyGame({ backend });

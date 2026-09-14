@@ -162,6 +162,47 @@ Two separate, direct fixes:
   drives **Sub In Whole Bench** — only the visible tag on the bench list is
   gone.
 
+## Round 6: the real bug behind "subs are flashing" — a background sync was silently unselecting them
+
+Round 5 removed the IN-next tag but didn't find a root cause for the actual
+reported symptom. Follow-up feedback pinned it down precisely: "the losing
+sub selection still happens, it takes about 2 seconds — I select a sub and
+then in about 2 seconds it unselects."
+
+Two seconds is not a vague number — it's exactly `POLL_STATE_MS`, the
+interval this app polls the shared game's server state on. That pointed
+straight at `cloudPull()`, and the bug was real: `selectedBench` (which
+bench player you've tapped, mid-sub) was declared a *synced* field (part of
+the `lineup` domain in `src/worker.js`), but the tap handler that sets it
+never actually pushes it to the server. So the moment you tap a bench
+player, your phone's local state has your selection — and the server still
+has whatever it had before (usually nothing). The very next routine poll,
+up to 2 seconds later, pulls that stale server value and blows away your
+selection, because `cloudPull()` rebuilds `state` from scratch
+(`{...fresh(),...remote,...localShare}`) on every newer snapshot, and only
+a short explicit list of fields survives that rebuild — this wasn't one of
+them.
+
+Fixed on both ends:
+
+- **`selectedBench` is no longer a synced field at all** — removed from
+  `DOMAIN_FIELDS.lineup` in the worker. Which player you've tapped, before
+  you've picked where she's going, is this phone's own momentary intent;
+  syncing it was never actually working (nothing pushed it) and syncing it
+  correctly would just let two coaches' phones fight over each other's
+  in-progress taps.
+- **`cloudPull()` now explicitly preserves the local selection** across
+  every incoming snapshot, the same way it already protects a clock this
+  phone owns from being dragged around by a remote pull.
+
+*Test: "REGRESSION: selecting a bench player to sub does not get wiped out
+by the next sync poll" — two phones sharing a game, coach A selects a
+bench player, coach B does something unrelated that bumps the shared
+syncVersion, A's next poll runs — asserts A's selection is still there
+afterward. Reverting the `cloudPull()` fix and rerunning confirms this test
+fails exactly the way the reported bug describes (`selectedBench` reset to
+`null`).*
+
 ---
 
 ## Still open

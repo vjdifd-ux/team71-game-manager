@@ -253,6 +253,14 @@ export async function openApp({
       await flush();
     },
 
+    /** Tap a bench player to select her, without following through to a position (the in-progress half of a sub). */
+    async selectBench(name) {
+      const btn = [...doc.querySelectorAll("#benchSide .bench-btn")]
+        .find((b) => b.textContent.includes(name));
+      btn.click();
+      await flush();
+    },
+
     async scoreGoal(name) {
       const short = name.split(" ")[0];
       const btn = [...doc.querySelectorAll("#goalScorers button")]
