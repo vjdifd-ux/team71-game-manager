@@ -1477,6 +1477,25 @@ test("the score, clock and quarter are shown right on the field, and the field c
   app.close();
 });
 
+test("the on-field score is colored by whichever jersey we're actually wearing, and the total time doesn't repeat the quarter", async () => {
+  const homeApp = await readyGame();
+  assert.ok(homeApp.$("ourScore").classList.contains("jersey-home"), "we're red when home");
+  assert.ok(homeApp.$("theirScore").classList.contains("jersey-away"), "opponent is blue when we're home");
+  assert.doesNotMatch(homeApp.text("totalTimer"), /Quarter/, "the quarter is already shown next to it, no need to repeat it here");
+  homeApp.close();
+
+  const awayApp = await openApp();
+  await awayApp.setScheduleGame("2026-09-19"); // at Team 75, Away
+  await awayApp.setGoalie(0, "Olivia Carpenter");
+  await awayApp.setGoalie(1, "Serafina Sinagra");
+  await awayApp.setGoalie(2, "Norah Dineen");
+  await awayApp.setGoalie(3, "Luna Scrivano");
+  await awayApp.click("buildPlanBtn");
+  assert.ok(awayApp.$("ourScore").classList.contains("jersey-away"), "we're blue when away");
+  assert.ok(awayApp.$("theirScore").classList.contains("jersey-home"), "opponent is red when we're away");
+  awayApp.close();
+});
+
 test("the live minutes table lists every present player", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");

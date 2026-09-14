@@ -102,13 +102,16 @@ did not land and you are running older code.
 **Game tab**
 
 - One card holds the whole picture: the score, the field, and the clock are
-  one graphic — the **scoreboard** (team names on top, score underneath) is
-  a bar flush with the field's own top edge, and the quarter ("Q1", "Q2", …)
-  and clock share a matching bar flush with the bottom edge, so both read as
-  part of the field itself rather than badges floating on top of it. Score,
-  positions, and time left are all in one glance instead of scattered across
-  separate cards. The big number is the **quarter** clock, resetting to 0:00
-  each quarter; total game time is the smaller line next to it.
+  one graphic. Team names, score, quarter ("Q1", "Q2", …), and clock sit
+  directly on the grass — no boxed background, just text with a shadow for
+  legibility — at the field's own top and bottom edges, so nothing reads as
+  a badge floating on top of it. The score is colored for whichever jersey
+  Team 71 is actually wearing that day (red when home, blue when away, the
+  opponent in the other color), matching the shirts on the field itself.
+  Score, positions, and time left are all in one glance instead of
+  scattered across separate cards. The big number is the **quarter** clock,
+  resetting to 0:00 each quarter; total game time is the smaller line next
+  to it.
 - **Goalie Rotation — Full Game** sits below the field now — useful as a
   reference, not something you need to check every few seconds.
 - The clock stops only when you tap Pause, when a quarter ends, or when you tap

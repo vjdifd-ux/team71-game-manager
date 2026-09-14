@@ -63,18 +63,19 @@
        own top and bottom edges — not floating badges with gaps around them —
        so .field's own border-radius + overflow:hidden clips their outer
        corners to match the field exactly and they read as one graphic. */
-    .field-bar{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.6);padding:6px 12px;z-index:2}
+    .field-bar{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:8px 14px;z-index:2;pointer-events:none}
     .field-bar.top{top:0}
     .field-bar.bottom{bottom:0}
     .field-bar .team{flex:1;min-width:0;text-align:center}
-    .field-bar .team-name{font-size:.65rem;font-weight:700;color:#cbd5e1;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .field-bar .team-score{font-size:2.5rem;font-weight:900;line-height:1}
-    .field-bar .team.us .team-score{color:#60a5fa}
-    .field-bar .sep{font-size:1.3rem;font-weight:800;color:#94a3b8;padding:0 6px}
-    .field-bar .timer{font-size:1.3rem;font-weight:900;line-height:1;letter-spacing:.02em}
-    .field-bar .muted{color:#cbd5e1;font-size:.65rem}
-    .field-bar #quarterLabel{font-size:.85rem}
-    .field-bar .pill{display:block;margin-top:2px;font-size:.6rem;font-weight:600;white-space:normal;line-height:1.25}
+    .field-bar .team-name{font-size:.65rem;font-weight:700;color:#f1f5f9;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.6)}
+    .field-bar .team-score{font-size:2.5rem;font-weight:900;line-height:1;color:#f1f5f9;text-shadow:0 1px 4px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.6)}
+    .field-bar .team-score.jersey-home{color:var(--home)}
+    .field-bar .team-score.jersey-away{color:var(--away)}
+    .field-bar .timer{font-size:1.3rem;font-weight:900;line-height:1;letter-spacing:.02em;color:#f1f5f9;text-shadow:0 1px 4px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.6)}
+    .field-bar .muted{color:#e2e8f0;font-size:.65rem;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+    .field-bar #quarterLabel{font-size:.85rem;color:#f1f5f9;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.6);flex:1;min-width:0}
+    .field-bar .field-clock{flex-shrink:0;white-space:nowrap;text-align:right}
+    .field-bar .pill{display:block;margin-top:2px;font-size:.6rem;font-weight:600;white-space:normal;line-height:1.25;background:none;padding:0;border-radius:0;color:#f1f5f9;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.6)}
     .game-layout{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
     @media(max-width:900px){.game-layout{grid-template-columns:1fr}}
     .field{position:relative;aspect-ratio:4/5;border-radius:18px;overflow:hidden;background:
@@ -308,18 +309,17 @@
             <div class="field">
               <div class="field-bar top">
                 <div class="team us"><div class="team-name">Team 71</div><div class="team-score" id="ourScore">0</div></div>
-                <div class="sep">–</div>
                 <div class="team"><div class="team-name" id="oppName">Team 72</div><div class="team-score" id="theirScore">0</div></div>
               </div>
               <div class="box top"></div><div class="half"></div><div class="circle"></div><div class="box bottom"></div>
-              <div class="fp" id="posF" data-slot="F" style="left:50%;top:25%"></div>
+              <div class="fp" id="posF" data-slot="F" style="left:50%;top:20%"></div>
               <div class="fp" id="posLB" data-slot="LB" style="left:28%;top:50%"></div>
               <div class="fp" id="posRB" data-slot="RB" style="left:72%;top:50%"></div>
               <div class="fp" id="posM" data-slot="M" style="left:50%;top:66%"></div>
-              <div class="fp" id="posGK" data-slot="GK" style="left:50%;top:78%"></div>
+              <div class="fp" id="posGK" data-slot="GK" style="left:50%;top:81%"></div>
               <div class="field-bar bottom">
                 <div id="quarterLabel"><strong>Q1</strong></div>
-                <div><span id="timer" class="timer">00:00</span> <span id="totalTimer" class="muted small">Game 00:00</span></div>
+                <div class="field-clock"><span id="timer" class="timer">00:00</span> <span id="totalTimer" class="muted small">Game 00:00</span></div>
               </div>
             </div>
             <div class="bench-side">
@@ -1835,6 +1835,11 @@
   function renderGame(){
     if($("soundToggle")) $("soundToggle").checked=state.soundEnabled!==false;
     $("oppName").textContent=state.opponent;$("ourScore").textContent=state.ourScore;$("theirScore").textContent=state.theirScore;$("quickUs").textContent=state.ourScore;$("quickThem").textContent=state.theirScore;
+    const usHome=state.homeAway==="home";
+    $("ourScore").classList.toggle("jersey-home",usHome);
+    $("ourScore").classList.toggle("jersey-away",!usHome);
+    $("theirScore").classList.toggle("jersey-home",!usHome);
+    $("theirScore").classList.toggle("jersey-away",usHome);
     const atQuarterStart = !state.running && state.elapsed===state.quarter*QLEN && state.elapsed>0;
     $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+"</strong>"+
       (atQuarterStart ? " <span class='pill'>Lineup ready — press Start when positioned</span>" : "");
@@ -1854,7 +1859,7 @@
     const totalNow=displayElapsed();
     const quarterNow=Math.max(0,totalNow-state.quarter*QLEN);
     $("timer").textContent=fmt(Math.min(QLEN,quarterNow));
-    $("totalTimer").textContent="Game "+fmt(totalNow)+" • Quarter "+(state.quarter+1)+" of 4";
+    $("totalTimer").textContent="Game "+fmt(totalNow);
     $("startPauseBtn").textContent=state.awaitingQuarterTransition ? "Start Next Quarter" : (state.running?"Pause":(state.elapsed?"Resume":"Start"));
     $("startPauseBtn").disabled = state.ended || (!canEdit());
     $("nextQuarterBtn").disabled = state.ended || (!canEdit());
