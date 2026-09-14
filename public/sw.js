@@ -1,4 +1,4 @@
-const CACHE='team71-v33-printfix';
+const CACHE='team71-v34-printlayout';
 const STATIC=['./manifest.json','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{

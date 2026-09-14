@@ -1,5 +1,12 @@
 # v33 PRINTFIX — what changed and why
 
+> **Incomplete — see `V34_PRINTLAYOUT.md`.** This fix was necessary but not
+> sufficient: a real-device test after this shipped still showed 4 pages
+> with a black background. The missing piece — `visibility:hidden` on the
+> rest of the app doesn't remove it from layout, so the printer still
+> paginated across the whole (invisible but still full-height) app — is
+> fixed in v34. Kept here as a historical record of the first, partial fix.
+
 Baseline: the v32 SCHEDULE package. Bug report: printing the Game Plan
 sheet produced 4 pages with a black background instead of a clean one-page
 printout.

@@ -199,6 +199,10 @@ test("REGRESSION: printing the game plan sheet does not clip content or paginate
   assert.ok(printRule, "a @media print block covering #planPrintModal exists");
 
   const inner = [...printRule.cssRules];
+  const appHideRule = inner.find((r) => r.selectorText === ".app,.modal:not(#planPrintModal)");
+  assert.equal(appHideRule.style.display, "none",
+    "visibility:hidden alone leaves .app's full layout height in place, so the printer paginates across the whole hidden app instead of just the sheet — display:none removes it from layout entirely");
+
   const modalRule = inner.find((r) => r.selectorText === "#planPrintModal");
   assert.equal(modalRule.style.position, "static",
     "position:fixed only paints on the first printed page — any overflow becomes blank (black, over the app's dark background) pages instead of continuing the sheet");
@@ -1592,8 +1596,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v33 so the deployed build is identifiable", async () => {
+test("the version banner says v34 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v33 PRINTFIX/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v34 PRINTLAYOUT/);
   app.close();
 });

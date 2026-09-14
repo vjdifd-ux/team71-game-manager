@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v33 PRINTFIX
+# Team 71 Game Manager — v34 PRINTLAYOUT
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,9 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v33:** see [`V33_PRINTFIX.md`](V33_PRINTFIX.md)
-- **Earlier changes:** [`V32_SCHEDULE.md`](V32_SCHEDULE.md), [`V31_CLEAN.md`](V31_CLEAN.md),
+- **What changed in v34:** see [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md)
+- **Earlier changes:** [`V33_PRINTFIX.md`](V33_PRINTFIX.md) (incomplete —
+  see V34), [`V32_SCHEDULE.md`](V32_SCHEDULE.md), [`V31_CLEAN.md`](V31_CLEAN.md),
   [`V30_BENCH.md`](V30_BENCH.md) (mostly reverted — see V31),
   [`V29_SHEET.md`](V29_SHEET.md), [`V28_LINEUP.md`](V28_LINEUP.md),
   [`V27_TOUCH.md`](V27_TOUCH.md), [`V26_ROSTER.md`](V26_ROSTER.md),
@@ -21,10 +22,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v33 PRINTFIX
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v34 PRINTLAYOUT
 ```
 
-Worth a glance before every game. If it does not say `v33 PRINTFIX`, the deploy
+Worth a glance before every game. If it does not say `v34 PRINTLAYOUT`, the deploy
 did not land and you are running older code.
 
 ---
