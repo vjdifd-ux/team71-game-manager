@@ -137,7 +137,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v27 TOUCH</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v28 LINEUP</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -212,7 +212,7 @@
 
     <div class="card">
       <div class="row"><strong>Players</strong><button id="allAvailableBtn">All Present & Available</button></div>
-      <div class="muted small" style="margin-top:5px">Just attendance — everyone's eligible for goalie. The snack player above takes Q4 by default.</div>
+      <div class="muted small" style="margin-top:5px">Just attendance — everyone's eligible for goalie. The snack player above takes Q4 by default. Skill is coach-only, used to keep the starting lineup and rotation from stacking new/lower-rated players together.</div>
       <div id="setupPlayers"></div>
     </div>
 
@@ -225,6 +225,18 @@
         </div>
       </div>
       <div id="goaliePlanner" class="goalie-strip"></div><div class="muted small" style="margin-top:6px">Goalie choices are manual overrides. Build Plan keeps your selections and only fills blank quarters.</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <strong>Starting Lineup</strong>
+          <div class="muted small" style="margin-top:4px">Suggested from season minutes, skill rating, and position history, so the opening five isn't accidentally all new/lower-rated players. Change any position, or Regenerate after editing attendance or skill.</div>
+        </div>
+        <button id="regenerateLineupBtn">Regenerate Suggestion</button>
+      </div>
+      <div id="lineupPlanner" class="goalie-strip"></div>
+      <div id="lineupBenchPreview" class="small muted" style="margin-top:6px"></div>
     </div>
 
     <div class="card">
@@ -391,6 +403,7 @@
   const slots=["GK","LB","RB","M","F"];
   const posNames={GK:"Goalie",LB:"Left Back",RB:"Right Back",M:"Support / Mid",F:"Forward"};
   const KEY="team71-v5-current", HIST="team71-v5-history";
+  const SKILL_KEY="team71-v5-skills";
   const PENDING_HIST="team71-pending-history-v12", HIST_MIGRATED="team71-history-migrated-v12";
   const QLEN=720, GLEN=2880, SUBINT=360;
 
@@ -405,6 +418,12 @@
   // hours of playing time when the app reopens.
   const STALE_CLOCK_MS=30*60*1000;
   let seasonHistory=loadJSON(HIST,[]);
+  // Skill rating is a coach's ongoing assessment of a player, not a per-game
+  // fact — it must survive New Game / Reset, unlike the rest of `state`.
+  // fresh() seeds state.skill from this on every new game; cloudPull() writes
+  // any remote change back into it so a rating set on one phone still shows
+  // up here after that phone starts its next game.
+  let skillRatings=loadJSON(SKILL_KEY,Object.fromEntries(roster.map(p=>[p,3])));
   let state=fresh();
   let timerHandle=null;
   let undoStack=[];
@@ -435,6 +454,8 @@
       selectedBench:null, elapsed:0, quarter:0, running:false, ended:false,
       awaitingQuarterTransition:false, planBuilt:false,
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
+      posPlay:Object.fromEntries(roster.map(p=>[p,{GK:0,LB:0,RB:0,M:0,F:0}])),
+      skill:Object.fromEntries(roster.map(p=>[p,skillRatings[p]||3])),
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,
       shareCode:"", lastAuditCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
@@ -580,6 +601,7 @@
 
     state=fresh();
     goalieDraft=["","","",""];
+    lineupDraft=null;
     state.goaliePlan=["","","",""];
     state.lineup={GK:null,LB:null,RB:null,M:null,F:null};
     state.planBuilt=false;
@@ -1058,7 +1080,7 @@
         const localShare={shareCode:state.shareCode,shareRole:state.shareRole};
         const ownsTimer=state.running && state.timerOwnerId===CLIENT_ID && remote.timerOwnerId===CLIENT_ID;
         const localClock=ownsTimer ? {
-          elapsed:state.elapsed, play:state.play, gk:state.gk,
+          elapsed:state.elapsed, play:state.play, gk:state.gk, posPlay:state.posPlay,
           running:state.running, quarter:state.quarter,
           timerOwnerId:state.timerOwnerId, clockStartedAt:state.clockStartedAt,
           clockAnchorElapsed:state.clockAnchorElapsed,
@@ -1070,6 +1092,13 @@
         // remote snapshot must not drag it backwards.
         if(localClock) Object.assign(state,localClock);
         localStorage.setItem(KEY,JSON.stringify(state));
+        // Skill rating outlives any one game (see the note by skillRatings
+        // above) — fold in whatever the other coach just synced so a rating
+        // set on either phone survives this phone's next New Game.
+        if(state.skill){
+          skillRatings={...skillRatings,...state.skill};
+          localStorage.setItem(SKILL_KEY,JSON.stringify(skillRatings));
+        }
         renderAll();
         applyingRemote=false;
       }
@@ -1217,11 +1246,12 @@
   function showTab(id){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===id));if(id==="history")renderHistory();if(id==="audit")loadAudit()}
 
   function seasonStats(){
-    const s=Object.fromEntries(roster.map(p=>[p,{minutes:0,gkQ:0,goals:0}]));
+    const s=Object.fromEntries(roster.map(p=>[p,{minutes:0,gkQ:0,goals:0,posMinutes:{GK:0,LB:0,RB:0,M:0,F:0}}]));
     seasonHistory.forEach(g=>roster.forEach(p=>{
       s[p].minutes+=Number(g.play?.[p]||0)/60;
       s[p].gkQ+=Number(g.gkQuarters?.[p]||0);
       s[p].goals+=Number(g.goals?.[p]||0);
+      if(g.posPlay?.[p]) slots.forEach(slot=>{s[p].posMinutes[slot]+=Number(g.posPlay[p][slot]||0)/60});
     }));
     return s;
   }
@@ -1248,9 +1278,27 @@
       const avail=document.createElement("select");
       [["available","Available"],["rest","Resting"],["out","Out / Hurt"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.availability[p]===v)o.selected=true;avail.append(o)});
       avail.addEventListener("change",()=>setAvailability(p,avail.value));
-      r.append(name,avail);box.append(r);
+      const skill=document.createElement("select");skill.title="Coach-only skill rating";
+      for(let v=1;v<=5;v++){const o=document.createElement("option");o.value=v;o.textContent="★".repeat(v)+" ("+v+")";if((state.skill[p]||3)===v)o.selected=true;skill.append(o)}
+      skill.disabled=!canEdit();
+      skill.addEventListener("change",()=>setSkill(p,Number(skill.value)));
+      r.append(name,avail,skill);box.append(r);
     });
     $("planPreview").innerHTML=state.planBuilt?'<strong>Goalies:</strong> '+state.goaliePlan.map((g,i)=>"Q"+(i+1)+" "+(g||"—")).join(" • ")+"<br><strong>Starting five:</strong> "+onField().join(", "):"No plan built yet.";
+  }
+
+  function setSkill(p,rating){
+    if(!guardEdit())return;
+    pushUndo("skill rating");
+    state.skill[p]=rating;
+    skillRatings[p]=rating;
+    localStorage.setItem(SKILL_KEY,JSON.stringify(skillRatings));
+    actionSave(["setup"]);
+    // Refresh the labels (stars shown next to each name) without discarding
+    // any manual lineup adjustment already made — Regenerate Suggestion is
+    // the explicit way to re-run the algorithm with the new rating.
+    renderLineupPlanner();
+    setStatus(p+" rated "+rating+"/5.");
   }
 
   function setSnackPlayer(){
@@ -1290,6 +1338,9 @@
         // Keep the visible goalie draft completely separate from shared live
         // state until Build Game Plan commits the four-quarter plan atomically.
         renderGoaliePlanner();
+        // Q1's goalie choice changes who is eligible for the starting field
+        // lineup below, so keep that preview in step.
+        if(q===0) renderLineupPlanner();
       };
       card.append(tag,sel);box.append(card);
     }
@@ -1315,6 +1366,7 @@
     pushUndo("clear goalie plan");
     goalieDraft=["","","",""];
     state.goaliePlan=["","","",""];
+    lineupDraft=null;
     if(state.elapsed===0){
       state.lineup.GK=null;
       state.planBuilt=false;
@@ -1327,6 +1379,119 @@
   function readGoaliePlannerSelections(){
     if(goalieDraft) return [...goalieDraft];
     return [...(state.goaliePlan||["","","",""])];
+  }
+
+  /**
+   * P2.2 starting lineup assistant. Fairness stays the primary rule (fewest
+   * season minutes get on the field first, unchanged from before) — skill
+   * only breaks a tie in minutes, which in practice is exactly the case that
+   * used to go wrong: at the start of a season everyone is tied at 0, and a
+   * plain minutes sort fell back to roster order, so a brand-new player with
+   * zero history could land in the starting five with three other
+   * inexperienced players just because of where her name sits alphabetically.
+   * Preferring the higher-rated player on a tie keeps at least one more
+   * experienced girl in every such group without ever overriding a real
+   * minutes difference.
+   */
+  function suggestStartingFive(pool,gk,stats){
+    const candidates=pool.filter(p=>p!==gk);
+    const ranked=[...candidates].sort((a,b)=>
+      (stats[a].minutes-stats[b].minutes) || ((state.skill[b]||3)-(state.skill[a]||3))
+    );
+    const field=ranked.slice(0,4);
+    const remaining=["LB","RB","M","F"];
+    const assigned={};
+    field.forEach(p=>{
+      let bestIdx=0;
+      for(let i=1;i<remaining.length;i++){
+        const cur=stats[p].posMinutes[remaining[i]]||0;
+        const best=stats[p].posMinutes[remaining[bestIdx]]||0;
+        if(cur<best) bestIdx=i;
+      }
+      assigned[remaining[bestIdx]]=p;
+      remaining.splice(bestIdx,1);
+    });
+    return assigned;
+  }
+
+  let lineupDraft=null;
+  function currentLineupDraft(){
+    if(!lineupDraft){
+      const pool=activePool();
+      const gk=readGoaliePlannerSelections()[0];
+      lineupDraft=suggestStartingFive(pool,gk,seasonStats());
+    }
+    return lineupDraft;
+  }
+
+  // Reconcile a possibly-stale or manually-edited draft against who's
+  // actually available right now: drop any pick who is no longer in the
+  // pool or is duplicated, then fill whatever's left from the same
+  // fairness+skill ranking the suggestion itself uses. Called at the moment
+  // Build Game Plan commits, so attendance changed after the draft was shown
+  // can never produce an invalid lineup.
+  function resolveLineupDraft(pool,gk){
+    const stats=seasonStats();
+    const candidates=pool.filter(p=>p!==gk);
+    const draft=currentLineupDraft();
+    const used=new Set();
+    const resolved={};
+    ["LB","RB","M","F"].forEach(slot=>{
+      const v=draft[slot];
+      if(v && candidates.includes(v) && !used.has(v)){resolved[slot]=v;used.add(v)}
+    });
+    const remaining=candidates.filter(p=>!used.has(p))
+      .sort((a,b)=>(stats[a].minutes-stats[b].minutes)||((state.skill[b]||3)-(state.skill[a]||3)));
+    ["LB","RB","M","F"].forEach(slot=>{
+      if(resolved[slot]) return;
+      const pick=remaining.shift();
+      if(pick) resolved[slot]=pick;
+    });
+    return resolved;
+  }
+
+  function renderLineupPlanner(){
+    const box=$("lineupPlanner");
+    if(!box)return;
+    const gk=readGoaliePlannerSelections()[0];
+    const pool=activePool();
+    // The Q1 goalie is usually chosen after this planner first renders (it
+    // starts out with no goalie excluded at all). Once picking a goalie would
+    // make the cached draft double-book her as a field starter too, drop the
+    // draft and let it recompute cleanly rather than showing a stale pick.
+    if(lineupDraft && Object.values(lineupDraft).includes(gk)) lineupDraft=null;
+    const draft=currentLineupDraft();
+    box.innerHTML="";
+    ["LB","RB","M","F"].forEach(slot=>{
+      const card=document.createElement("div");card.className="goalie-q";
+      const tag=document.createElement("div");tag.className="qtag";tag.textContent=posNames[slot];
+      const sel=document.createElement("select");sel.style.marginTop="6px";
+      const takenElsewhere=new Set(Object.entries(draft).filter(([s])=>s!==slot).map(([,p])=>p));
+      pool.filter(p=>p!==gk && !takenElsewhere.has(p)).forEach(p=>{
+        const o=document.createElement("option");o.value=p;
+        o.textContent=p+" ("+"★".repeat(state.skill[p]||3)+")";
+        if(draft[slot]===p)o.selected=true;
+        sel.append(o);
+      });
+      sel.disabled=!canEdit();
+      sel.onchange=()=>{
+        if(!guardEdit())return;
+        lineupDraft={...currentLineupDraft(),[slot]:sel.value};
+        renderLineupPlanner();
+      };
+      card.append(tag,sel);box.append(card);
+    });
+    const chosen=new Set(Object.values(draft));
+    const benchPreview=pool.filter(p=>p!==gk && !chosen.has(p));
+    const benchBox=$("lineupBenchPreview");
+    if(benchBox) benchBox.textContent=benchPreview.length ? "Bench to start: "+benchPreview.join(", ") : "";
+  }
+
+  function regenerateLineup(){
+    if(!guardEdit())return;
+    lineupDraft=null;
+    renderLineupPlanner();
+    setStatus("Starting lineup suggestion refreshed.");
   }
 
   /**
@@ -1521,14 +1686,13 @@
     state.opponent=$("opponent").value.trim()||"Opponent"; state.homeAway=$("homeAway").value;
     const pool=activePool();if(pool.length<5){alert("You need at least 5 available players.");return}
     pushUndo("build plan");
-    const stats=seasonStats();
 
     // The visible dropdowns are the source of truth at the instant Build Game
     // Plan is pressed. This guarantees Q1 on the field matches Q1 on screen.
     state.goaliePlan=computeGoaliePlan(pool,readGoaliePlannerSelections());
     const gk=state.goaliePlan[0];
-    const field=pool.filter(p=>p!==gk).sort((a,b)=>stats[a].minutes-stats[b].minutes).slice(0,4);
-    state.lineup={GK:gk,LB:field[0]||null,RB:field[1]||null,M:field[2]||null,F:field[3]||null};
+    const field=resolveLineupDraft(pool,gk);
+    state.lineup={GK:gk,LB:field.LB||null,RB:field.RB||null,M:field.M||null,F:field.F||null};
 
     // Safety invariant: Q1 planner and the live field must always agree.
     state.lineup.GK=state.goaliePlan[0];
@@ -1552,6 +1716,7 @@
     // Hard invariant after authoritative server commit.
     state.lineup.GK=state.goaliePlan[0];
     goalieDraft=[...state.goaliePlan];
+    lineupDraft={LB:state.lineup.LB,RB:state.lineup.RB,M:state.lineup.M,F:state.lineup.F};
     save();
 
     renderAll();
@@ -1833,10 +1998,29 @@
     const incoming=b.slice(0,n);
     const outgoing=fieldSlots.slice(0,n);
 
+    // P1.4 position diversity: WHICH of the vacated slots each incoming
+    // player takes is still open at this point — outgoing[] only fixed WHO
+    // is leaving, by minutes, same as before. Hand each incoming player (in
+    // the same lowest-minutes-first order, so the fairness priority is
+    // unchanged) the open slot she has played the least this game, so a fair
+    // sub doesn't also happen to put her back in the same position for the
+    // fourth time. Ties (including "never played any of these", true for a
+    // brand-new player) fall back to slot order.
+    const remaining=outgoing.slice();
+    const assignment=incoming.map(p=>{
+      let bestIdx=0;
+      for(let i=1;i<remaining.length;i++){
+        const cur=(state.posPlay[p]||{})[remaining[i].slot]||0;
+        const best=(state.posPlay[p]||{})[remaining[bestIdx].slot]||0;
+        if(cur<best) bestIdx=i;
+      }
+      return remaining.splice(bestIdx,1)[0];
+    });
+
     state.suggestedSub={
       incoming,
-      outgoingPlayers:outgoing.map(x=>x.p),
-      outgoingSlots:outgoing.map(x=>x.slot)
+      outgoingPlayers:assignment.map(x=>x.p),
+      outgoingSlots:assignment.map(x=>x.slot)
     };
   }
 
@@ -2091,7 +2275,13 @@
     const d=Math.max(0,capped-state.elapsed);
 
     if(d>0){
-      onField().forEach(p=>state.play[p]+=d);
+      slots.forEach(slot=>{
+        const p=state.lineup[slot];
+        if(!p) return;
+        state.play[p]+=d;
+        if(!state.posPlay[p]) state.posPlay[p]={GK:0,LB:0,RB:0,M:0,F:0};
+        state.posPlay[p][slot]+=d;
+      });
       if(state.lineup.GK)state.gk[state.lineup.GK]+=d;
       state.elapsed=capped;
     }
@@ -2364,6 +2554,7 @@
       ourScore:state.ourScore,
       theirScore:state.theirScore,
       play:JSON.parse(JSON.stringify(state.play)),
+      posPlay:JSON.parse(JSON.stringify(state.posPlay)),
       gkQuarters,
       goals:JSON.parse(JSON.stringify(state.goals)),
       goalLog:JSON.parse(JSON.stringify(state.goalLog))
@@ -2421,7 +2612,7 @@
     if(viewer && !$("game").classList.contains("active")) showTab("game");
 
     // Controls whose only restriction is Coach vs Viewer.
-    ["buildPlanBtn","clearGoaliesBtn","newGameBtn","undoBtn","allAvailableBtn","historyNewGameBtn",
+    ["buildPlanBtn","clearGoaliesBtn","regenerateLineupBtn","newGameBtn","undoBtn","allAvailableBtn","historyNewGameBtn",
      "deleteAllHistoryBtn","clearActiveBtn"].forEach(id=>{
       const el=$(id); if(el) el.disabled=viewer;
     });
@@ -2485,6 +2676,7 @@
   $("snackPlayer").addEventListener("change",setSnackPlayer);
   $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});actionSave(["setup","lineup"]);renderAll()};
   $("buildPlanBtn").onclick=buildPlan;
+  $("regenerateLineupBtn").onclick=regenerateLineup;
   $("clearGoaliesBtn").onclick=clearGoaliePlan;$("startPauseBtn").onclick=startPause;$("nextQuarterBtn").onclick=nextQuarter;$("endGameBtn").onclick=endGame;$("undoBtn").onclick=undo;
   $("acceptSubBtn").onclick=acceptSuggestedSub;$("changeSubBtn").onclick=()=>{state.suggestedSub=null;suggestSub(true);actionSave(["lineup"]);renderSubSuggestion()};$("skipSubBtn").onclick=skipScheduledSub;
   $("oppGoalBtn").onclick=oppGoal;$("undoGoalBtn").onclick=undoLastGoal;$("startNextQuarterBtn").onclick=startNextQuarter;$("closeQuarterBtn").onclick=()=>$("quarterModal").classList.remove("show");
@@ -2515,7 +2707,7 @@
   $("leaveShareBtn").onclick=leaveSharedGame;
 
 
-  function renderAll(){renderSetup();renderGoaliePlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
+  function renderAll(){renderSetup();renderGoaliePlanner();renderLineupPlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
   load();
   if(state.running && state.timerOwnerId===CLIENT_ID){
     requestWakeLock();

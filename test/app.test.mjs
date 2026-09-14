@@ -1353,8 +1353,102 @@ test("the stale v20-era 3-player-batch wording is gone from the page", async () 
   app.close();
 });
 
-test("the version banner says v27 so the deployed build is identifiable", async () => {
+/* ============================================== skill ratings and starting lineup */
+
+test("P2.1: a skill rating updates state and survives New Game / Reset", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v27 TOUCH/);
+  await app.setSkill("Kennedy Kozlosky", 5);
+  assert.equal(app.state().skill["Kennedy Kozlosky"], 5);
+
+  await app.click("newGameBtn");
+  assert.equal(app.state().skill["Kennedy Kozlosky"], 5,
+    "a coach's skill assessment is not per-game data — it must not reset with the rest of the game");
+  app.close();
+});
+
+test("P2.1/P2.2 REGRESSION: a tie in season minutes no longer falls back to plain roster order", async () => {
+  // Every player is tied at 0 season minutes here — exactly the situation a
+  // brand-new player is always in. The old code's tie-break was "whoever
+  // sorts first in the roster array", so the starting five was really just
+  // "the first four names alphabetically" by accident, not by any fairness
+  // or ability signal.
+  const app = await openApp();
+  await app.setGoalie(0, "Shalom Amaya");
+  const withoutRating = (await app.click("buildPlanBtn"), app.onField().filter(Boolean));
+  assert.ok(!withoutRating.includes("Luna Scrivano"),
+    "sanity check: on a plain tie, roster order leaves Luna on the bench");
+
+  await app.click("newGameBtn");
+  await app.setSkill("Luna Scrivano", 5);
+  await app.setGoalie(0, "Shalom Amaya");
+  await app.click("buildPlanBtn");
+  const withRating = app.onField().filter(Boolean);
+  assert.ok(withRating.includes("Luna Scrivano"),
+    "a higher-rated player on an otherwise pure tie is preferred for the starting five");
+  app.close();
+});
+
+test("P2.2: the coach can manually adjust a starting-lineup slot before Build Game Plan", async () => {
+  const app = await openApp();
+  await app.setGoalie(0, "Shalom Amaya");
+  await app.setLineupSlot("F", "Aria Stagnitta");
+  await app.click("buildPlanBtn");
+  assert.equal(app.state().lineup.F, "Aria Stagnitta",
+    "a manual Adjust before commit is kept, not silently overridden by the suggestion");
+  app.close();
+});
+
+test("P2.2: Regenerate Suggestion discards a manual adjustment and recomputes", async () => {
+  const app = await openApp();
+  await app.setGoalie(0, "Shalom Amaya");
+  const suggested = app.lineupPlanner().F;
+  await app.setLineupSlot("F", suggested === "Aria Stagnitta" ? "Kennedy Kozlosky" : "Aria Stagnitta");
+  assert.notEqual(app.lineupPlanner().F, suggested);
+
+  await app.click("regenerateLineupBtn");
+  assert.equal(app.lineupPlanner().F, suggested, "Regenerate recomputes the same algorithm's pick");
+  app.close();
+});
+
+test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the position she's already played the most", async () => {
+  const seedState = {
+    planBuilt: true,
+    goaliePlan: ["Olivia Carpenter", "Olivia Carpenter", "Olivia Carpenter", "Olivia Carpenter"],
+    lineup: { GK: "Olivia Carpenter", LB: "Shalom Amaya", RB: "Norah Dineen", M: "Kennedy Kozlosky", F: "Juliette Maglio" },
+    play: {
+      "Olivia Carpenter": 400, "Shalom Amaya": 400, "Norah Dineen": 400, "Kennedy Kozlosky": 400,
+      "Juliette Maglio": 400, "Luna Scrivano": 0, "Serafina Sinagra": 0, "Aria Stagnitta": 0
+    },
+    // Luna already logged heavy time at LB earlier this game (before she was
+    // benched) — everyone else here is a blank slate.
+    posPlay: {
+      "Olivia Carpenter": { GK: 400, LB: 0, RB: 0, M: 0, F: 0 },
+      "Shalom Amaya": { GK: 0, LB: 400, RB: 0, M: 0, F: 0 },
+      "Norah Dineen": { GK: 0, LB: 0, RB: 400, M: 0, F: 0 },
+      "Kennedy Kozlosky": { GK: 0, LB: 0, RB: 0, M: 400, F: 0 },
+      "Juliette Maglio": { GK: 0, LB: 0, RB: 0, M: 0, F: 400 },
+      "Luna Scrivano": { GK: 0, LB: 1000, RB: 0, M: 0, F: 0 },
+      "Serafina Sinagra": { GK: 0, LB: 0, RB: 0, M: 0, F: 0 },
+      "Aria Stagnitta": { GK: 0, LB: 0, RB: 0, M: 0, F: 0 }
+    },
+    gk: {
+      "Olivia Carpenter": 400, "Shalom Amaya": 0, "Norah Dineen": 0, "Kennedy Kozlosky": 0,
+      "Juliette Maglio": 0, "Luna Scrivano": 0, "Serafina Sinagra": 0, "Aria Stagnitta": 0
+    },
+    subDone: [false, false, false, false], nextSubAt: 360, elapsed: 400, quarter: 0, running: false
+  };
+  const app = await openApp({ seedState });
+  await app.click("acceptSubBtn");
+  const s = app.state();
+  assert.equal(s.lineup.RB, "Luna Scrivano", "Luna is routed away from LB, her heaviest position, into RB instead");
+  assert.equal(s.lineup.LB, "Serafina Sinagra", "a position-blank teammate takes the vacated LB slot instead");
+  assert.equal(s.lineup.M, "Aria Stagnitta");
+  assert.equal(s.lineup.F, "Juliette Maglio", "untouched — she wasn't due to be swapped out this round");
+  app.close();
+});
+
+test("the version banner says v28 so the deployed build is identifiable", async () => {
+  const app = await openApp();
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v28 LINEUP/);
   app.close();
 });

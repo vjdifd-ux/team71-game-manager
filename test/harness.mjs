@@ -179,6 +179,30 @@ export async function openApp({
       await flush();
     },
 
+    /** Pregame roster: coach-only skill rating, 1-5. */
+    async setSkill(name, rating) {
+      const sel = rows()[ROSTER.indexOf(name)].querySelectorAll("select")[1];
+      sel.value = String(rating);
+      fire(sel);
+      await flush();
+    },
+
+    /** Pregame: the current Starting Lineup suggestion/draft, {LB,RB,M,F}. */
+    lineupPlanner() {
+      const slots = ["LB", "RB", "M", "F"];
+      const sels = [...doc.querySelectorAll("#lineupPlanner .goalie-q select")];
+      return Object.fromEntries(sels.map((sel, i) => [slots[i], sel.value || null]));
+    },
+
+    /** Pregame: manually adjust one Starting Lineup slot before Build Game Plan. */
+    async setLineupSlot(slot, name) {
+      const slots = ["LB", "RB", "M", "F"];
+      const sel = doc.querySelectorAll("#lineupPlanner .goalie-q select")[slots.indexOf(slot)];
+      sel.value = name;
+      fire(sel);
+      await flush();
+    },
+
     /** In-game Player Status buttons. */
     async setAvailInGame(name, label) {
       const row = [...doc.querySelectorAll("#statusPlayers .row")]

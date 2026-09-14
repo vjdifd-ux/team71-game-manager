@@ -1,4 +1,4 @@
-const CACHE='team71-v27-touch';
+const CACHE='team71-v28-lineup';
 const STATIC=['./manifest.json','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{

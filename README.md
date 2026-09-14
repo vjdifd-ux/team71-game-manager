@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v27 TOUCH
+# Team 71 Game Manager — v28 LINEUP
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,20 +8,20 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v27:** see [`V27_TOUCH.md`](V27_TOUCH.md)
-- **Earlier changes:** [`V26_ROSTER.md`](V26_ROSTER.md), [`V25_PRINT.md`](V25_PRINT.md),
-  [`V24_SIDELINE.md`](V24_SIDELINE.md), [`V23_ROTATION.md`](V23_ROTATION.md),
-  [`V22_FIXES.md`](V22_FIXES.md)
+- **What changed in v28:** see [`V28_LINEUP.md`](V28_LINEUP.md)
+- **Earlier changes:** [`V27_TOUCH.md`](V27_TOUCH.md), [`V26_ROSTER.md`](V26_ROSTER.md),
+  [`V25_PRINT.md`](V25_PRINT.md), [`V24_SIDELINE.md`](V24_SIDELINE.md),
+  [`V23_ROTATION.md`](V23_ROTATION.md), [`V22_FIXES.md`](V22_FIXES.md)
 
 ## Checking which version is live
 
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v27 TOUCH
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v28 LINEUP
 ```
 
-Worth a glance before every game. If it does not say `v27 TOUCH`, the deploy
+Worth a glance before every game. If it does not say `v28 LINEUP`, the deploy
 did not land and you are running older code.
 
 ---
@@ -40,14 +40,20 @@ did not land and you are running older code.
    bench should take her spot. **Rest** is different: it's a break, not gone
    for the day, so it only affects the goalie plan if she was due in goal
    *this* quarter — a future quarter's assignment (the snack player's Q4,
-   say) is left alone.
+   say) is left alone. Each player also has a **coach-only skill rating**
+   (1–5 stars) here — it only ever softens a tie in playing time, so it can't
+   override real fairness, but it stops a brand-new or lower-rated player
+   from ending up in the starting five by pure coincidence of roster order.
 3. Pick a goalie for each of the four quarters, or leave some blank.
-4. **Build Game Plan** — your manual choices are kept, the snack player fills
-   a blank Q4 if she's here, remaining blanks are filled in from season goalie
-   minutes, and the starting five is chosen by lowest season minutes. This is
-   committed to the shared game in one write, so the Q1 keeper on screen is
-   always the Q1 keeper on the field.
-5. **Print / Save Game Plan** — a one-page fallback record: opponent, snack,
+4. **Starting Lineup** — a suggested GK/LB/RB/M/F for kickoff, weighing season
+   minutes first, skill rating as a tiebreaker, and each player's position
+   history so the same fair pick doesn't also repeat her most-played
+   position. Change any position by hand, or **Regenerate Suggestion** to
+   recompute from the current attendance/skill/goalie choices.
+5. **Build Game Plan** — commits the goalie plan and the starting lineup (as
+   adjusted above) to the shared game in one write, so the Q1 keeper and
+   starting five on screen are always what's actually on the field.
+6. **Print / Save Game Plan** — a one-page fallback record: opponent, snack,
    a full-game rotation projected every 6 minutes (goalie, all four field
    positions, and the bench), and everyone's attendance. Works before or
    after Build Game Plan runs, and reflects whatever's current if you reopen
@@ -82,9 +88,11 @@ did not land and you are running older code.
   End Period. The 6:00 mark is a reminder, never a forced stop — the reminder
   card starts flashing once you're past it and the rotation still isn't done.
 - **Sub In Whole Bench** brings every bench player on at once — fewest minutes
-  in, most minutes out, one for one — whenever you tap it. It's a suggestion,
-  never automatic: the clock keeps running and you make the swap when play
-  allows.
+  in, most minutes out, one for one — whenever you tap it. Which incoming
+  player lands at which open position also favors whichever of the vacated
+  spots she's played the least this game, so a fair swap on minutes doesn't
+  also happen to repeat her most-played position. It's a suggestion, never
+  automatic: the clock keeps running and you make the swap when play allows.
 - A player who comes off mid-rotation for an emergency (hurt, doesn't want to
   play right now) doesn't get auto-subbed back in the moment you flip her back
   to Available. Whoever covered for her keeps that spot until the current
@@ -124,7 +132,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                125 tests — see below
+test/                130 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -149,7 +157,7 @@ npm install
 npm test
 ```
 
-125 tests, about 20 seconds, no network or Cloudflare account required.
+130 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

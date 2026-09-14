@@ -23,6 +23,7 @@ your-repo/
 ├── V25_PRINT.md
 ├── V26_ROSTER.md
 ├── V27_TOUCH.md
+├── V28_LINEUP.md
 ├── package.json
 ├── package-lock.json
 ├── wrangler.json
@@ -119,7 +120,7 @@ This is the step that was missing last time. Do all three.
 2. **Check the version banner.** Load the site. Under the title it should read:
 
    ```
-   East Islip GU7 • 5v5 • 4 × 12-minute quarters • v27 TOUCH
+   East Islip GU7 • 5v5 • 4 × 12-minute quarters • v28 LINEUP
    ```
 
    If it still says an older version, the deploy did not land — go back to
@@ -146,7 +147,7 @@ The app is an installed PWA with a service worker. After a deploy:
 ```bash
 npm install
 npm run dev      # wrangler dev, against a local D1
-npm test         # 125 tests, no network or Cloudflare account needed
+npm test         # 130 tests, no network or Cloudflare account needed
 npm run tail     # live logs from the deployed Worker
 ```
 
