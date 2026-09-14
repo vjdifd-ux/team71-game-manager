@@ -1,4 +1,4 @@
-const CACHE='team71-v26-roster';
+const CACHE='team71-v36-fieldbar';
 const STATIC=['./manifest.json','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{

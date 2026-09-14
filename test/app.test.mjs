@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { openApp, makeBackend, V21_HTML } from "./harness.mjs";
+import { openApp, makeBackend, roster, V21_HTML } from "./harness.mjs";
 import { req } from "./d1-shim.mjs";
 import worker from "../src/worker.js";
 
@@ -10,7 +10,7 @@ const apiStatus = async (backend, path) => (await worker.fetch(req(path), backen
 
 const TICK = 250;
 
-/** Pregame → built plan, sitting on the Game tab ready to start. */
+/** Pregame → built plan, ready to start (stays on Pregame; Build Game Plan no longer auto-navigates). */
 async function readyGame(opts = {}) {
   const app = await openApp(opts);
   await app.setGoalie(0, "Olivia Carpenter");
@@ -76,6 +76,31 @@ test("if the snack player is unavailable, Q4 falls back to normal fairness", asy
   await app.click("buildPlanBtn");
   assert.notEqual(app.state().goaliePlan[3], "Aria Stagnitta");
   assert.ok(app.state().goaliePlan[3], "someone should still be assigned");
+  app.close();
+});
+
+test("picking a scheduled game fills in opponent, jersey, and snack together", async () => {
+  const app = await openApp();
+  await app.setScheduleGame("2026-09-19"); // at Team 75, Away, snack Aria Stagnitta
+  const s = app.state();
+  assert.equal(s.opponent, "Team 75");
+  assert.equal(s.homeAway, "away");
+  assert.equal(s.snackPlayer, "Aria Stagnitta");
+  app.close();
+});
+
+test("the Q4 goalie dropdown visually defaults to the snack player before Build Game Plan", async () => {
+  const app = await openApp();
+  await app.setSnack("Aria Stagnitta");
+  const q4Select = app.doc.querySelectorAll("#goaliePlanner .goalie-q select")[3];
+  assert.equal(q4Select.value, "Aria Stagnitta");
+  app.close();
+});
+
+test("Build Game Plan stays on the Pregame tab instead of jumping to Game", async () => {
+  const app = await readyGame();
+  assert.equal(app.$("setup").classList.contains("active"), true);
+  assert.equal(app.$("game").classList.contains("active"), false);
   app.close();
 });
 
@@ -163,6 +188,79 @@ test("REGRESSION: the game plan modal is scrollable and closable even when the s
   app.close();
 });
 
+test("REGRESSION: printing the game plan sheet does not clip content or paginate onto blank pages", async () => {
+  const app = await readyGame();
+  await app.click("printPlanBtn");
+
+  const printRule = [...app.doc.styleSheets]
+    .flatMap((s) => { try { return [...s.cssRules]; } catch { return []; } })
+    .find((r) => r.media && r.media.mediaText.includes("print") &&
+      [...r.cssRules].some((inner) => inner.selectorText === "#planPrintModal"));
+  assert.ok(printRule, "a @media print block covering #planPrintModal exists");
+
+  const inner = [...printRule.cssRules];
+  const appHideRule = inner.find((r) => r.selectorText === ".app,.modal:not(#planPrintModal)");
+  assert.equal(appHideRule.style.display, "none",
+    "visibility:hidden alone leaves .app's full layout height in place, so the printer paginates across the whole hidden app instead of just the sheet — display:none removes it from layout entirely");
+
+  const modalRule = inner.find((r) => r.selectorText === "#planPrintModal");
+  assert.equal(modalRule.style.position, "static",
+    "position:fixed only paints on the first printed page — any overflow becomes blank (black, over the app's dark background) pages instead of continuing the sheet");
+
+  const cardRule = inner.find((r) => r.selectorText === "#planPrintModal .modal-card");
+  assert.equal(cardRule.style.getPropertyValue("max-height"), "none",
+    "the on-screen 85vh scroll cap must not also clip the printed sheet to one viewport-tall chunk");
+  assert.equal(cardRule.style.overflow, "visible");
+  app.close();
+});
+
+test("the Game tab has its own Game Plan button, not just Pregame and the viewer bar", async () => {
+  const app = await readyGame();
+  assert.equal(app.$("planPrintModal").classList.contains("show"), false);
+  await app.click("gameTabPlanBtn");
+  assert.equal(app.$("planPrintModal").classList.contains("show"), true);
+  app.close();
+});
+
+test("a finished rotation window is crossed off on the printable game plan", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 361); // just past the first 6-minute window
+
+  await app.click("printPlanBtn");
+  const rows = [...app.doc.querySelectorAll("#planPrintSheet .schedule tbody tr")];
+  assert.ok(rows[0].classList.contains("win-done"), "the window that already ended is crossed off");
+  assert.match(rows[0].textContent, /^✓/, "a visible check mark for a finished window");
+  assert.ok(!rows[1].classList.contains("win-done"), "the window still ahead is not crossed off");
+  app.close();
+});
+
+test("a manual change during the current window is highlighted on the printable game plan, a later one is not", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 30); // still well inside the first window
+
+  await app.click("printPlanBtn");
+  assert.equal(app.$("planPrintSheet").querySelectorAll(".diff-cell").length, 0,
+    "sanity: nothing manual has happened yet");
+  await app.click("closePlanPrintBtn");
+
+  const plannedF = app.state().lineup.F;
+  const onField = app.onField();
+  const incoming = roster.find((p) => !onField.includes(p));
+  await app.manualSub(incoming, "F");
+  assert.notEqual(app.state().lineup.F, plannedF, "sanity: the manual sub actually changed the field");
+
+  await app.click("printPlanBtn");
+  const rows = [...app.doc.querySelectorAll("#planPrintSheet .schedule tbody tr")];
+  assert.match(rows[0].textContent, /manual change/i);
+  assert.ok(rows[0].querySelector(".diff-cell").textContent.includes(app.state().lineup.F),
+    "the highlighted cell shows who is actually there now");
+  assert.equal(rows[1].querySelectorAll(".diff-cell").length, 0,
+    "a window that has not been reached yet is never flagged as manually changed");
+  app.close();
+});
+
 /* ============================================================ the clock itself */
 
 test("the clock only moves when it is running", async () => {
@@ -170,6 +268,17 @@ test("the clock only moves when it is running", async () => {
   await run(app, 30);
   assert.equal(app.state().elapsed, 0, "paused clock must not drift");
   assert.equal(app.text("timer"), "00:00");
+  app.close();
+});
+
+test("the coach's Start/Pause card also shows the running clock, not just the field", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 60);
+  assert.equal(app.text("timerTop"), app.text("timer"), "top clock should match the field clock");
+  assert.equal(app.text("totalTimerTop"), app.text("totalTimer"), "top total time should match the field's");
+  assert.equal(app.text("timerTop"), "01:00");
+  assert.match(app.$("quarterLabelTop").innerHTML, /Q1/);
   app.close();
 });
 
@@ -355,12 +464,18 @@ test("REGRESSION: pressing Sub In Whole Bench again after the rotation is done a
   // A full-strength bench exactly mirrors the field, so an unconfirmed
   // repeat press used to silently swap everyone right back — declining the
   // confirmation must leave the lineup untouched instead.
+  // (Each press is a beat apart, same as a real confirm dialog taking a
+  // moment to interact with — P0.1's rapid-repeat guard should only ever
+  // catch a genuine same-instant double-fire, not deliberate, spaced-out
+  // presses.)
   app.win.confirm = () => false;
+  await run(app, 1);
   await app.click("acceptSubBtn");
   assert.deepEqual(app.state().lineup, afterFirst, "declining leaves the lineup alone");
 
   // An explicit confirm still lets the coach deliberately swap again.
   app.win.confirm = () => true;
+  await run(app, 1);
   await app.click("acceptSubBtn");
   assert.notDeepEqual(app.state().lineup, afterFirst, "confirming still allows a deliberate second swap");
   app.close();
@@ -771,6 +886,72 @@ test("goals land on the scorer, the team score, and the goal log", async () => {
   app.close();
 });
 
+test("P0.1: a sync/network failure never blocks local game actions", async () => {
+  const app = await readyGame({ backend: makeBackend() });
+  await app.click("createShareBtn");
+  await app.click("startPauseBtn");
+  await run(app, 60);
+
+  app.win.fetch = () => Promise.reject(new Error("network down"));
+
+  const scorer = app.state().lineup.F;
+  await app.scoreGoal(scorer);
+
+  assert.equal(app.state().ourScore, 1, "the goal is recorded locally even though every sync attempt is failing");
+  assert.equal(app.text("ourScore"), "1", "the screen updates immediately, not just localStorage");
+
+  await app.manualSub("Aria Stagnitta", "F");
+  assert.equal(app.state().lineup.F, "Aria Stagnitta", "further local actions keep working too");
+  app.close();
+});
+
+test("P0.1 REGRESSION: a same-instant duplicate tap (ghost click) never double-counts a goal", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+  const scorer = app.state().lineup.F;
+
+  // Two clicks with no time between them simulate a duplicate/ghost click
+  // event for the one tap a coach actually made, not two deliberate taps.
+  await app.scoreGoal(scorer);
+  await app.scoreGoal(scorer);
+  assert.equal(app.state().ourScore, 1, "the second, same-instant tap must be ignored");
+  assert.equal(app.state().goals[scorer], 1);
+  assert.equal(app.state().goalLog.length, 1);
+
+  await app.click("oppGoalBtn");
+  await app.click("oppGoalBtn");
+  assert.equal(app.state().theirScore, 1, "opponent goal button is guarded the same way");
+
+  // A real second tap, a beat later, must still count normally — the guard
+  // is against duplicate events, not against scoring twice in one game.
+  await run(app, 1);
+  await app.scoreGoal(scorer);
+  assert.equal(app.state().ourScore, 2, "a genuine later goal is never blocked");
+  app.close();
+});
+
+test("P0.1: a rapid duplicate tap on the emergency-replacement picker only records one action", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 100);
+
+  const victim = app.state().lineup.F;
+  await app.setAvailPregame(victim, "rest");
+  const [cover] = app.replaceOptions();
+
+  await app.confirmReplacement(cover);
+  await app.confirmReplacement(cover);
+  assert.equal(app.state().lineup.F, cover);
+
+  // If the duplicate event had pushed a second undo entry, one Undo would
+  // silently no-op (undoing the second, identical assignment back onto
+  // itself) and the coach would have to press it twice to get her back.
+  await app.click("undoBtn");
+  assert.equal(app.state().lineup.F, null, "a single Undo fully reverses the one real action");
+  app.close();
+});
+
 test("Undo Last Goal removes only the most recent goal", async () => {
   const app = await readyGame();
   const scorer = app.state().lineup.F;
@@ -989,6 +1170,26 @@ test("two phones: coach B's substitution does not disturb coach A's running cloc
   a.close(); b.close();
 });
 
+test("REGRESSION: selecting a bench player to sub does not get wiped out by the next sync poll", async () => {
+  const backend = makeBackend();
+  const a = await readyGame({ backend });
+  await a.click("createShareBtn");
+  const b = await openApp({ backend });
+  await b.click("joinActiveCoachBtn");
+
+  const bench = a.state().goaliePlan ? Object.keys(a.state().play).find((p) => !a.onField().includes(p)) : null;
+  await a.selectBench(bench);
+  assert.equal(a.state().selectedBench, bench, "sanity: the tap registered");
+
+  // Coach B does something unrelated that bumps the shared syncVersion, so
+  // A's next routine poll (every 2s) has a newer remote snapshot to pull.
+  await b.scoreGoal(b.state().lineup.F);
+  await a.pump(2000);
+
+  assert.equal(a.state().selectedBench, bench, "A's own in-progress selection must survive a background sync pull");
+  a.close(); b.close();
+});
+
 test("two phones: the second coach cannot hijack a clock the first phone owns", async () => {
   const backend = makeBackend();
   const a = await readyGame({ backend });
@@ -1004,6 +1205,17 @@ test("two phones: the second coach cannot hijack a clock the first phone owns", 
   assert.match(b.text("status"), /other coach's phone/);
   assert.equal(a.state().running, true);
   a.close(); b.close();
+});
+
+test("REGRESSION: the shared-game UI is one card, not two, with no manual join-by-code fields", async () => {
+  const app = await openApp();
+  const card = app.$("activeGameCard");
+  assert.ok(card.contains(app.$("createShareBtn")), "Create Shared Game moved into the Active Game card");
+  assert.ok(card.contains(app.$("connectionTestBtn")), "Connection Test moved into the Active Game card");
+  assert.ok(card.contains(app.$("joinActiveCoachBtn")), "Join as Coach lives in the same card");
+  assert.equal(app.$("joinCode"), null, "the manual join-by-code input is gone");
+  assert.equal(app.$("joinShareBtn"), null, "the manual Join Shared Game button is gone");
+  app.close();
 });
 
 test("a viewer phone follows along but cannot change anything", async () => {
@@ -1067,6 +1279,36 @@ test("a viewer can open the game plan sheet without leaving viewer mode", async 
   a.close(); b.close();
 });
 
+/* ============================================ shared field view enhancements */
+
+test("a goal shows as a badge on top of the scorer's shirt", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 30);
+  const scorer = app.state().lineup.F;
+  assert.equal(app.doc.querySelector("#posF .goal-badge"), null, "no badge before any goal");
+  await app.scoreGoal(scorer);
+  const badge = app.doc.querySelector("#posF .goal-badge");
+  assert.ok(badge, "a badge appears on the scorer's shirt");
+  assert.equal(badge.textContent, "1");
+  app.close();
+});
+
+test("the bench no longer tags who is rotating in next — confusing, per feedback, and removed", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 30);
+  const s = app.state().suggestedSub;
+  assert.ok(s && s.incoming.length, "sanity: the suggestion still exists (Sub In Whole Bench still needs it)");
+
+  const benchBtns = [...app.doc.querySelectorAll("#benchSide .bench-btn")];
+  assert.ok(benchBtns.length, "sanity: there are bench buttons to check");
+  benchBtns.forEach((btn) => {
+    assert.ok(!btn.querySelector(".next-in"), "no bench button should show an IN next tag");
+  });
+  app.close();
+});
+
 test("REGRESSION: a shared game left paused for 45 minutes is still joinable", async () => {
   const backend = makeBackend();
   const a = await readyGame({ backend });
@@ -1089,8 +1331,7 @@ test("starting the clock re-publishes the game after Clear Active Game", async (
   await a.click("createShareBtn");
   await a.click("clearActiveBtn");
 
-  // Rejoin the same code and start play.
-  a.$("joinCode").value = a.state().lastAuditCode || "";
+  // Start a fresh shared game and start play.
   await a.click("createShareBtn");
   await a.click("startPauseBtn");
   await a.flush();
@@ -1234,16 +1475,59 @@ test("the idle poll cadence is 10s, not 5s", async () => {
 
 /* ============================================================= rendering */
 
-test("the field shows five positions with names and minutes", async () => {
+test("the field shows five positions with names and minutes, and keeps each marker's own label short enough not to collide with its neighbors", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
   await run(app, 300);
   for (const id of ["posGK", "posLB", "posRB", "posM", "posF"]) {
-    const txt = app.$(id).textContent;
+    const el = app.$(id);
+    const txt = el.textContent;
     assert.ok(!txt.includes("Empty"), id + " should hold a player");
     assert.match(txt, /\d/, id + " should show minutes");
+    assert.ok(el.querySelector(".min-badge"), id + " shows minutes as a corner badge, not appended to the position label — an appended label is what caused the position markers to overlap each other and the scoreboard/clock in earlier testing");
+    assert.doesNotMatch(el.querySelector(".fpos").textContent, /\d/, id + "'s position label itself should stay just the position name");
   }
   app.close();
+});
+
+test("the score, clock and quarter are shown right on the field, and the field comes before Goalie Rotation", async () => {
+  const app = await readyGame();
+  const field = app.doc.querySelector(".field");
+  assert.ok(field.contains(app.$("quarterLabel")), "quarter badge sits on the field itself");
+  assert.ok(field.contains(app.$("timer")), "clock sits on the field itself");
+  assert.ok(field.contains(app.$("ourScore")), "score sits on the field itself");
+  assert.ok(app.$("quarterLabel").closest(".field-bar") === app.$("quarterLabel").closest(".field").querySelector(".field-bar.bottom"));
+  assert.ok(app.$("ourScore").closest(".field-bar") === field.querySelector(".field-bar.top"), "score lives in the top field-bar, not a separate scoreboard above the field");
+
+  // One visual: score, field, and clock/quarter all in the same card.
+  const fieldCard = field.closest(".card");
+
+  // Goalie Rotation is a reference, not something to check constantly —
+  // it now comes after the field card, not before it.
+  const cards = [...app.doc.querySelectorAll("#game .game-layout .card")];
+  const fieldIndex = cards.indexOf(fieldCard);
+  const goalieIndex = cards.findIndex((c) => c.textContent.includes("Goalie Rotation"));
+  assert.ok(fieldIndex >= 0 && goalieIndex > fieldIndex, "Goalie Rotation now comes after the field");
+  app.close();
+});
+
+test("the on-field score is colored by whichever jersey we're actually wearing, and the total time doesn't repeat the quarter", async () => {
+  const homeApp = await readyGame();
+  assert.ok(homeApp.$("ourScore").classList.contains("jersey-home"), "we're red when home");
+  assert.ok(homeApp.$("theirScore").classList.contains("jersey-away"), "opponent is blue when we're home");
+  assert.doesNotMatch(homeApp.text("totalTimer"), /Quarter/, "the quarter is already shown next to it, no need to repeat it here");
+  homeApp.close();
+
+  const awayApp = await openApp();
+  await awayApp.setScheduleGame("2026-09-19"); // at Team 75, Away
+  await awayApp.setGoalie(0, "Olivia Carpenter");
+  await awayApp.setGoalie(1, "Serafina Sinagra");
+  await awayApp.setGoalie(2, "Norah Dineen");
+  await awayApp.setGoalie(3, "Luna Scrivano");
+  await awayApp.click("buildPlanBtn");
+  assert.ok(awayApp.$("ourScore").classList.contains("jersey-away"), "we're blue when away");
+  assert.ok(awayApp.$("theirScore").classList.contains("jersey-home"), "opponent is red when we're away");
+  awayApp.close();
 });
 
 test("the live minutes table lists every present player", async () => {
@@ -1281,8 +1565,113 @@ test("the stale v20-era 3-player-batch wording is gone from the page", async () 
   app.close();
 });
 
-test("the version banner says v26 so the deployed build is identifiable", async () => {
+/* ============================================== skill ratings and starting lineup */
+
+test("P2.1: a skill rating updates state and survives New Game / Reset", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v26 ROSTER/);
+  await app.setSkill("Kennedy Kozlosky", 5);
+  assert.equal(app.state().skill["Kennedy Kozlosky"], 5);
+
+  await app.click("newGameBtn");
+  assert.equal(app.state().skill["Kennedy Kozlosky"], 5,
+    "a coach's skill assessment is not per-game data — it must not reset with the rest of the game");
+  app.close();
+});
+
+test("P2.1/P2.2 REGRESSION: a tie in season minutes no longer falls back to plain roster order", async () => {
+  // Every player is tied at 0 season minutes here — exactly the situation a
+  // brand-new player is always in. The old code's tie-break was "whoever
+  // sorts first in the roster array", so the starting five was really just
+  // "the first four names alphabetically" by accident, not by any fairness
+  // or ability signal.
+  const app = await openApp();
+  await app.setGoalie(0, "Shalom Amaya");
+  const withoutRating = (await app.click("buildPlanBtn"), app.onField().filter(Boolean));
+  assert.ok(!withoutRating.includes("Luna Scrivano"),
+    "sanity check: on a plain tie, roster order leaves Luna on the bench");
+
+  await app.click("newGameBtn");
+  await app.setSkill("Luna Scrivano", 5);
+  await app.setGoalie(0, "Shalom Amaya");
+  await app.click("buildPlanBtn");
+  const withRating = app.onField().filter(Boolean);
+  assert.ok(withRating.includes("Luna Scrivano"),
+    "a higher-rated player on an otherwise pure tie is preferred for the starting five");
+  app.close();
+});
+
+test("P2.2: the coach can manually adjust a starting-lineup slot before Build Game Plan", async () => {
+  const app = await openApp();
+  await app.setGoalie(0, "Shalom Amaya");
+  await app.setLineupSlot("F", "Aria Stagnitta");
+  await app.click("buildPlanBtn");
+  assert.equal(app.state().lineup.F, "Aria Stagnitta",
+    "a manual Adjust before commit is kept, not silently overridden by the suggestion");
+  app.close();
+});
+
+test("P2.2: Regenerate Suggestion discards a manual adjustment and recomputes", async () => {
+  const app = await openApp();
+  await app.setGoalie(0, "Shalom Amaya");
+  const suggested = app.lineupPlanner().F;
+  await app.setLineupSlot("F", suggested === "Aria Stagnitta" ? "Kennedy Kozlosky" : "Aria Stagnitta");
+  assert.notEqual(app.lineupPlanner().F, suggested);
+
+  await app.click("regenerateLineupBtn");
+  assert.equal(app.lineupPlanner().F, suggested, "Regenerate recomputes the same algorithm's pick");
+  app.close();
+});
+
+test("the starting lineup dropdown shows a plain numeric ranking, not stars", async () => {
+  const app = await openApp();
+  await app.setSkill("Kennedy Kozlosky", 5);
+  await app.setGoalie(0, "Shalom Amaya");
+  const options = [...app.doc.querySelectorAll("#lineupPlanner .goalie-q select")[0].options];
+  const kennedyOption = options.find((o) => o.value === "Kennedy Kozlosky");
+  assert.equal(kennedyOption.textContent, "Kennedy Kozlosky (5)");
+  assert.ok(!kennedyOption.textContent.includes("★"), "no star characters, they were getting clipped");
+  app.close();
+});
+
+test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the position she's already played the most", async () => {
+  const seedState = {
+    planBuilt: true,
+    goaliePlan: ["Olivia Carpenter", "Olivia Carpenter", "Olivia Carpenter", "Olivia Carpenter"],
+    lineup: { GK: "Olivia Carpenter", LB: "Shalom Amaya", RB: "Norah Dineen", M: "Kennedy Kozlosky", F: "Juliette Maglio" },
+    play: {
+      "Olivia Carpenter": 400, "Shalom Amaya": 400, "Norah Dineen": 400, "Kennedy Kozlosky": 400,
+      "Juliette Maglio": 400, "Luna Scrivano": 0, "Serafina Sinagra": 0, "Aria Stagnitta": 0
+    },
+    // Luna already logged heavy time at LB earlier this game (before she was
+    // benched) — everyone else here is a blank slate.
+    posPlay: {
+      "Olivia Carpenter": { GK: 400, LB: 0, RB: 0, M: 0, F: 0 },
+      "Shalom Amaya": { GK: 0, LB: 400, RB: 0, M: 0, F: 0 },
+      "Norah Dineen": { GK: 0, LB: 0, RB: 400, M: 0, F: 0 },
+      "Kennedy Kozlosky": { GK: 0, LB: 0, RB: 0, M: 400, F: 0 },
+      "Juliette Maglio": { GK: 0, LB: 0, RB: 0, M: 0, F: 400 },
+      "Luna Scrivano": { GK: 0, LB: 1000, RB: 0, M: 0, F: 0 },
+      "Serafina Sinagra": { GK: 0, LB: 0, RB: 0, M: 0, F: 0 },
+      "Aria Stagnitta": { GK: 0, LB: 0, RB: 0, M: 0, F: 0 }
+    },
+    gk: {
+      "Olivia Carpenter": 400, "Shalom Amaya": 0, "Norah Dineen": 0, "Kennedy Kozlosky": 0,
+      "Juliette Maglio": 0, "Luna Scrivano": 0, "Serafina Sinagra": 0, "Aria Stagnitta": 0
+    },
+    subDone: [false, false, false, false], nextSubAt: 360, elapsed: 400, quarter: 0, running: false
+  };
+  const app = await openApp({ seedState });
+  await app.click("acceptSubBtn");
+  const s = app.state();
+  assert.equal(s.lineup.RB, "Luna Scrivano", "Luna is routed away from LB, her heaviest position, into RB instead");
+  assert.equal(s.lineup.LB, "Serafina Sinagra", "a position-blank teammate takes the vacated LB slot instead");
+  assert.equal(s.lineup.M, "Aria Stagnitta");
+  assert.equal(s.lineup.F, "Juliette Maglio", "untouched — she wasn't due to be swapped out this round");
+  app.close();
+});
+
+test("the version banner says v36 so the deployed build is identifiable", async () => {
+  const app = await openApp();
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v36 FIELDBAR/);
   app.close();
 });

@@ -16,12 +16,26 @@
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     button,input,select{font:inherit}
+    /* P0.1 touch reliability: touch-action removes the ~300ms double-tap-zoom
+       detection delay some mobile browsers still apply without it, so a real
+       tap registers as fast as the device can report it. Applied to every
+       tappable control, not just <button>, since .fp/.bench-btn are plain
+       divs with click handlers. */
+    button,.fp,.bench-btn,.tabs button{touch-action:manipulation;-webkit-tap-highlight-color:rgba(96,165,250,.35)}
     button{min-height:44px;border:1px solid var(--line);border-radius:12px;padding:10px 13px;background:#0f172a;color:var(--text)}
     button.primary{background:var(--accent);border-color:var(--accent);font-weight:700}
     button.good{background:var(--good);border-color:var(--good)}
     button.warn{background:var(--warn);border-color:var(--warn)}
     button.danger{background:var(--danger);border-color:var(--danger)}
     button:disabled{opacity:.45}
+    /* Immediate visible feedback on tap, before any render or network round
+       trip — an :active state alone can otherwise be invisible on iOS in
+       standalone/PWA mode. */
+    button:not(:disabled):active,.bench-btn:active{transform:scale(.96);filter:brightness(1.15)}
+    /* .fp already carries a translate(-50%,-50%) for centering — a plain
+       scale() here would replace it and snap the shirt to the wrong spot
+       on tap, so its :active state keeps that transform and adds to it. */
+    .fp:active{transform:translate(-50%,-50%) scale(.96);filter:brightness(1.15)}
     input,select{min-height:44px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#0f172a;color:var(--text)}
     .app{max-width:1180px;margin:0 auto;padding:14px}
     .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -36,8 +50,32 @@
     .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
     @media(max-width:760px){.grid2,.grid4{grid-template-columns:1fr}}
     .player-row{display:grid;grid-template-columns:1.3fr .8fr .8fr;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
-    @media(max-width:650px){.player-row{grid-template-columns:1fr}.player-row>*{width:100%}}
+    /* Name keeps its own row; availability and skill sit side by side
+       underneath instead of each taking a full row, to save vertical space
+       on a phone with 8 players listed. */
+    @media(max-width:650px){
+      .player-row{grid-template-columns:1fr 1fr;row-gap:6px}
+      .player-row>label:first-child{grid-column:1/-1}
+      .player-row>*{width:100%}
+    }
     .score{font-size:1.75rem;font-weight:800}.timer{font-size:3rem;font-weight:900;letter-spacing:.03em}
+    /* The scoreboard and the clock/quarter are bars flush with the field's
+       own top and bottom edges — not floating badges with gaps around them —
+       so .field's own border-radius + overflow:hidden clips their outer
+       corners to match the field exactly and they read as one graphic. */
+    .field-bar{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:8px 14px;z-index:2;pointer-events:none}
+    .field-bar.top{top:0}
+    .field-bar.bottom{bottom:0}
+    .field-bar .team{flex:1;min-width:0;text-align:center}
+    .field-bar .team-name{font-size:.65rem;font-weight:700;color:#f1f5f9;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.6)}
+    .field-bar .team-score{font-size:2.5rem;font-weight:900;line-height:1;color:#f1f5f9;text-shadow:0 1px 4px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.6)}
+    .field-bar .team-score.jersey-home{color:var(--home)}
+    .field-bar .team-score.jersey-away{color:var(--away)}
+    .field-bar .timer{font-size:1.3rem;font-weight:900;line-height:1;letter-spacing:.02em;color:#f1f5f9;text-shadow:0 1px 4px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.6)}
+    .field-bar .muted{color:#e2e8f0;font-size:.65rem;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+    .field-bar #quarterLabel{font-size:.85rem;color:#f1f5f9;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.6);max-width:26%}
+    .field-bar .field-clock{display:flex;flex-direction:column;align-items:flex-end;text-align:right;gap:2px;white-space:nowrap}
+    .field-bar .pill{display:block;margin-top:2px;font-size:.6rem;font-weight:600;white-space:normal;line-height:1.25;background:none;padding:0;border-radius:0;color:#f1f5f9;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.6)}
     .game-layout{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
     @media(max-width:900px){.game-layout{grid-template-columns:1fr}}
     .field{position:relative;aspect-ratio:4/5;border-radius:18px;overflow:hidden;background:
@@ -48,10 +86,17 @@
     .circle{position:absolute;left:50%;top:50%;width:90px;height:90px;border:3px solid rgba(255,255,255,.18);border-radius:50%;transform:translate(-50%,-50%)}
     .box{position:absolute;left:50%;transform:translateX(-50%);width:45%;height:17%;border:3px solid rgba(255,255,255,.18)}
     .box.top{top:18px;border-top:none}.box.bottom{bottom:18px;border-bottom:none}
-    .fp{position:absolute;transform:translate(-50%,-50%);width:100px;text-align:center;cursor:pointer}
+    .fp{position:absolute;transform:translate(-50%,-50%);width:100px;min-height:44px;text-align:center;cursor:pointer}
     .shirt{width:54px;height:42px;margin:0 auto 5px;border-radius:8px 8px 10px 10px;border:2px solid rgba(0,0,0,.3);box-shadow:0 2px 5px rgba(0,0,0,.25)}
     .shirt.home{background:var(--home)}.shirt.away{background:var(--away)}.shirt.gk{background:#30343b}
     .fname{font-size:.75rem;font-weight:800;text-shadow:0 1px 1px #000}.fpos{font-size:.68rem}
+    /* Goals scored, shown right on the shirt so the field view alone answers
+       "who scored" without a separate table. */
+    .goal-badge{position:absolute;top:-4px;right:16px;width:18px;height:18px;border-radius:50%;background:#f59e0b;color:#111;font-size:.68rem;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+    /* Minutes played, shown the same way (a corner badge, not a longer label
+       line) so bringing this back doesn't reopen the overlaps fixed by
+       keeping every marker box a fixed, short height. */
+    .min-badge{position:absolute;top:-4px;left:16px;background:rgba(15,23,42,.85);color:#e2e8f0;font-size:.6rem;font-weight:700;padding:1px 5px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.4);white-space:nowrap}
     .bench-btn{display:flex;justify-content:space-between;gap:8px;width:100%;margin-bottom:8px;text-align:left}
     .bench-btn.selected{outline:2px solid #60a5fa;background:#172554}
     .notice{background:#172554;color:#dbeafe;border-radius:12px;padding:10px 12px;margin-top:10px}
@@ -72,11 +117,32 @@
     .print-sheet .schedule{font-size:.68rem}
     .print-sheet .schedule th,.print-sheet .schedule td{padding:3px 4px}
     @media print{.print-sheet .schedule{font-size:.62rem}}
+    /* A window whose end time has already passed is crossed off, like a
+       paper checklist, so a glance at the sheet mid-game shows what's left. */
+    .print-sheet tr.win-done td{color:#888;text-decoration:line-through}
+    .print-sheet tr.win-done td:first-child{text-decoration:none;font-weight:600;color:#166534}
+    /* The window in progress right now is checked against the actual field —
+       a differing cell means a manual change already diverged from the plan. */
+    .print-sheet .diff-cell{background:#fef3c7;color:#92400e;font-weight:600}
+    .print-sheet .diff-tag{font-size:.62em;font-weight:400;display:block}
     @media print{
-      body *{visibility:hidden}
-      #planPrintModal,#planPrintModal *{visibility:visible}
-      #planPrintModal{position:fixed;inset:0;background:#fff;display:block!important;padding:0}
-      #planPrintModal .modal-card{box-shadow:none;border:none;width:100%!important;max-width:100%;padding:0;margin:0}
+      /* visibility:hidden (the previous approach) hides painting but not
+         layout — the whole single-page app (every card on whichever tab is
+         active) still occupies its full height, so the real printer paginates
+         across that entire invisible document instead of just the sheet,
+         landing the actual content on page 1 and turning the rest into
+         filler pages. display:none removes .app from the render tree
+         entirely: zero layout, zero pages. Same reasoning against
+         position:fixed, which only ever paints on the first printed page —
+         static, in-flow content is what paginates correctly across
+         however many pages the sheet genuinely needs. max-height/
+         overflow-y:auto (added so the modal scrolls on screen) must also be
+         cleared here, or the sheet gets clipped to one viewport-tall chunk
+         before it ever reaches the printer. */
+      html,body{background:#fff!important}
+      .app,.modal:not(#planPrintModal){display:none!important}
+      #planPrintModal{position:static;background:#fff;display:block!important;padding:0}
+      #planPrintModal .modal-card{box-shadow:none;border:none;width:100%!important;max-width:100%;max-height:none;overflow:visible;padding:0;margin:0}
       .no-print{display:none!important}
     }
     .replace-btn{display:flex;justify-content:space-between;gap:8px;text-align:left}
@@ -112,8 +178,6 @@
     .goalie-q.current{outline:2px solid #60a5fa;background:#172554}
     .goalie-q .qtag{font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700}
     .goalie-q .gname{font-weight:700;margin-top:3px}
-    .shared-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    @media(max-width:700px){.shared-grid{grid-template-columns:1fr}}
     .sync-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#64748b;margin-right:6px}
     .sync-dot.live{background:#22c55e}.sync-dot.err{background:#ef4444}
     .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.15rem;font-weight:800;letter-spacing:.08em}
@@ -123,7 +187,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v26 ROSTER</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v36 FIELDBAR</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -138,6 +202,9 @@
   <section id="setup" class="panel active">
     <div class="card">
       <strong>Game Setup</strong>
+      <label style="display:block;margin-top:10px">This week's game <span class="muted small">(fills in opponent, jersey, and snack)</span>
+        <select id="scheduleGame"><option value="">Choose a scheduled game…</option></select>
+      </label>
       <div class="grid2" style="margin-top:10px">
         <label>Opponent<input id="opponent" value="Team 72"></label>
         <label>Jersey / Side<select id="homeAway"><option value="home">Home — Red</option><option value="away">Away — Blue</option></select></label>
@@ -152,53 +219,28 @@
     <div class="card" id="activeGameCard">
       <div class="row">
         <div>
-          <strong>Active Team 71 Game</strong>
-          <div class="muted small" style="margin-top:4px">If another coach already started a shared game, it will appear here automatically.</div>
-        </div>
-        <div class="controls"><button id="refreshActiveBtn">Refresh</button><button id="clearActiveBtn" class="danger">Clear Active Game</button></div>
-      </div>
-      <div id="activeGameInfo" class="notice" style="margin-top:10px">Checking for an active game…</div>
-      <div class="controls" style="margin-top:10px">
-        <button id="joinActiveViewerBtn" class="primary" disabled>Join as Viewer</button>
-        <button id="joinActiveCoachBtn" disabled>Join as Coach</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row">
-        <div>
           <strong>Shared Game</strong>
-          <div class="muted small" style="margin-top:4px">Use the same game code on both phones. Maureen can join as a viewer or as a second coach.</div>
+          <div class="muted small" style="margin-top:4px">If another coach already started a shared game, it will appear below automatically.</div>
         </div>
         <div id="syncStatus" class="small"><span class="sync-dot" id="syncDot"></span><span id="syncText">Local only</span><span id="syncAge" class="muted"></span></div>
       </div>
-      <div class="shared-grid" style="margin-top:10px">
-        <div>
-          <div class="small muted">Current game code</div>
-          <div id="shareCodeDisplay" class="code" style="margin:6px 0">—</div>
-          <div class="controls">
-            <button id="createShareBtn">Create Shared Game</button>
-            <button id="leaveShareBtn">Leave Shared Game</button>
-            <button id="connectionTestBtn">Connection Test</button>
-          </div>
-        </div>
-        <div>
-          <label class="small muted">Join existing game code</label>
-          <input id="joinCode" maxlength="8" placeholder="e.g. T71A8K" style="width:100%;margin-top:5px;text-transform:uppercase">
-          <label class="small muted" style="display:block;margin-top:8px">This phone's role</label>
-          <select id="shareRole" style="width:100%;margin-top:5px">
-            <option value="coach">Coach — can make changes</option>
-            <option value="viewer">Viewer — follow live status only</option>
-          </select>
-          <button id="joinShareBtn" class="primary" style="margin-top:8px;width:100%">Join Shared Game</button>
-        </div>
+      <div id="activeGameInfo" class="notice" style="margin-top:10px">Checking for an active game…</div>
+      <div class="small muted" style="margin-top:10px">Current game code: <span id="shareCodeDisplay" class="code">—</span></div>
+      <div class="controls" style="margin-top:10px">
+        <button id="joinActiveViewerBtn" class="primary" disabled>Join as Viewer</button>
+        <button id="createShareBtn">Create Shared Game</button>
+        <button id="connectionTestBtn">Connection Test</button>
+        <button id="refreshActiveBtn">Refresh</button>
+        <button id="leaveShareBtn">Leave Shared Game</button>
+        <button id="clearActiveBtn" class="danger">Clear Active Game</button>
+        <button id="joinActiveCoachBtn" disabled>Join as Coach</button>
       </div>
     </div>
 
 
     <div class="card">
       <div class="row"><strong>Players</strong><button id="allAvailableBtn">All Present & Available</button></div>
-      <div class="muted small" style="margin-top:5px">Just attendance — everyone's eligible for goalie. The snack player above takes Q4 by default.</div>
+      <div class="muted small" style="margin-top:5px">Just attendance — everyone's eligible for goalie. The snack player above takes Q4 by default. Skill is coach-only, used to keep the starting lineup and rotation from stacking new/lower-rated players together.</div>
       <div id="setupPlayers"></div>
     </div>
 
@@ -211,6 +253,18 @@
         </div>
       </div>
       <div id="goaliePlanner" class="goalie-strip"></div><div class="muted small" style="margin-top:6px">Goalie choices are manual overrides. Build Plan keeps your selections and only fills blank quarters.</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <strong>Starting Lineup</strong>
+          <div class="muted small" style="margin-top:4px">Suggested from season minutes, skill rating, and position history, so the opening five isn't accidentally all new/lower-rated players. Change any position, or Regenerate after editing attendance or skill.</div>
+        </div>
+        <button id="regenerateLineupBtn">Regenerate Suggestion</button>
+      </div>
+      <div id="lineupPlanner" class="goalie-strip"></div>
+      <div id="lineupBenchPreview" class="small muted" style="margin-top:6px"></div>
     </div>
 
     <div class="card">
@@ -228,8 +282,8 @@
     </div>
     <div class="card">
       <div class="row">
-        <div><div class="muted small" id="gameLabel">Team 71 vs Team 72</div><div class="score">Team 71 <span id="ourScore">0</span> – <span id="theirScore">0</span> <span id="oppName">Team 72</span></div></div>
-        <div style="text-align:right"><div id="quarterLabel"><strong>Q1</strong></div><div id="timer" class="timer">00:00</div><div id="totalTimer" class="muted small">Game 00:00</div></div>
+        <div id="quarterLabelTop"><strong>Q1</strong></div>
+        <div style="text-align:right"><div id="timerTop" class="timer">00:00</div><div id="totalTimerTop" class="muted small">Game 00:00</div></div>
       </div>
       <div class="controls coach-only" style="margin-top:10px">
         <button class="primary" id="startPauseBtn">Start</button>
@@ -237,11 +291,7 @@
         <button class="danger" id="endGameBtn">End Game</button>
         <button id="newGameBtn">New Game / Reset</button>
         <button id="undoBtn">Undo</button>
-      </div>
-      <div class="controls coach-only" style="margin-top:10px">
-        <label class="small"><input id="soundToggle" type="checkbox" checked> Sounds</label>
-        <button id="testSpeedBtn" type="button">Test Speed: 1×</button>
-        <span id="testSpeedNote" class="muted small">Sub reminder at 6:00 (clock keeps running) • quarter buzzer at 12:00</span>
+        <button id="gameTabPlanBtn">Game Plan</button>
       </div>
       <div id="status" class="notice">Build a game plan before starting.</div>
       <div id="lastSubBanner" class="last-sub"></div>
@@ -252,7 +302,7 @@
         <div class="card">
           <div id="nextSubBox" class="nextsub">
             <div class="row"><strong id="nextEventLabel">Next Rotation</strong><span id="subCountdown" class="pill">6:00</span></div>
-            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div><div class="muted small" style="margin-top:4px">At 6:00 the reminder starts flashing. The clock keeps running. Sub the whole bench in at once when you're ready, or make any manual sub instead.</div>
+            <div id="subSuggestion" style="margin-top:6px">Waiting for game to start.</div>
             <div class="controls coach-only" style="margin-top:8px">
               <button id="acceptSubBtn" class="good">Sub In Whole Bench</button>
               <button id="changeSubBtn">Change Suggestion</button>
@@ -261,22 +311,23 @@
           </div>
         </div>
 
-
         <div class="card">
-          <div class="row"><strong>Goalie Rotation — Full Game</strong><span class="muted small">Current period highlighted</span></div>
-          <div id="gameGoalieStrip" class="goalie-strip"></div>
-        </div>
-
-        <div class="card">
-          <div class="row"><strong>Field</strong><span class="muted small">Tap a bench player, then tap any field position — including goalie</span></div>
           <div class="field-stage">
             <div class="field">
+              <div class="field-bar top">
+                <div class="team us"><div class="team-name">Team 71</div><div class="team-score" id="ourScore">0</div></div>
+                <div class="team"><div class="team-name" id="oppName">Team 72</div><div class="team-score" id="theirScore">0</div></div>
+              </div>
               <div class="box top"></div><div class="half"></div><div class="circle"></div><div class="box bottom"></div>
-              <div class="fp" id="posF" data-slot="F" style="left:50%;top:20%"></div>
+              <div class="fp" id="posF" data-slot="F" style="left:50%;top:26%"></div>
               <div class="fp" id="posLB" data-slot="LB" style="left:28%;top:50%"></div>
               <div class="fp" id="posRB" data-slot="RB" style="left:72%;top:50%"></div>
-              <div class="fp" id="posM" data-slot="M" style="left:50%;top:66%"></div>
-              <div class="fp" id="posGK" data-slot="GK" style="left:50%;top:86%"></div>
+              <div class="fp" id="posM" data-slot="M" style="left:50%;top:69%"></div>
+              <div class="fp" id="posGK" data-slot="GK" style="left:50%;top:88%"></div>
+              <div class="field-bar bottom">
+                <div id="quarterLabel"><strong>Q1</strong></div>
+                <div class="field-clock"><span id="timer" class="timer">00:00</span><span id="totalTimer" class="muted small">Game 00:00</span></div>
+              </div>
             </div>
             <div class="bench-side">
               <h4>Sideline Bench</h4>
@@ -284,6 +335,11 @@
               <div id="benchSide"></div>
             </div>
           </div>
+        </div>
+
+        <div class="card">
+          <div class="row"><strong>Goalie Rotation — Full Game</strong><span class="muted small">Current period highlighted</span></div>
+          <div id="gameGoalieStrip" class="goalie-strip"></div>
         </div>
 
         <div class="card coach-only">
@@ -294,11 +350,6 @@
       </div>
 
       <aside>
-        <div class="card coach-only">
-          <strong>Substitution Help</strong>
-          <div class="muted small" style="margin:4px 0 10px">Tap a sideline player, then tap any field position — including goalie. Subs never move the game clock. At 6:00 the reminder starts flashing and stays available all quarter: "Sub In Whole Bench" swaps every bench player on at once (fewest minutes in, most minutes out), one tap, whenever you're ready.</div>
-        </div>
-
         <div class="card">
           <strong>Player Status</strong>
           <div id="statusPlayers" style="margin-top:8px"></div>
@@ -309,6 +360,15 @@
           <div style="overflow:auto;margin-top:8px"><table><thead><tr><th>Player</th><th>Total</th><th>GK</th><th>Goals</th></tr></thead><tbody id="liveMinutes"></tbody></table></div>
         </div>
       </aside>
+    </div>
+
+    <div class="card coach-only">
+      <strong>Test Speed &amp; Sound</strong>
+      <div class="controls" style="margin-top:10px">
+        <label class="small"><input id="soundToggle" type="checkbox" checked> Sounds</label>
+        <button id="testSpeedBtn" type="button">Test Speed: 1×</button>
+      </div>
+      <div id="testSpeedNote" class="muted small" style="margin-top:6px">Sub reminder at 6:00 (clock keeps running) • quarter buzzer at 12:00</div>
     </div>
   </section>
 
@@ -374,9 +434,23 @@
 <script>
 (() => {
   const roster=["Shalom Amaya","Olivia Carpenter","Norah Dineen","Kennedy Kozlosky","Juliette Maglio","Luna Scrivano","Serafina Sinagra","Aria Stagnitta"];
+  // The season schedule, from the team's game-day email — one dropdown fills
+  // in opponent, jersey/side, and the snack assignment (which also drives
+  // the Q4 goalie default) in one pick instead of three.
+  const SEASON_SCHEDULE=[
+    {date:"2026-09-12",label:"Sat Sep 12, 9:00 AM vs Team 72 (Home)",opponent:"Team 72",homeAway:"home",snack:"Serafina Sinagra"},
+    {date:"2026-09-19",label:"Sat Sep 19, 2:00 PM at Team 75 (Away)",opponent:"Team 75",homeAway:"away",snack:"Aria Stagnitta"},
+    {date:"2026-09-26",label:"Sat Sep 26, 2:00 PM vs Team 76 (Home)",opponent:"Team 76",homeAway:"home",snack:"Kennedy Kozlosky"},
+    {date:"2026-10-03",label:"Sat Oct 3, 1:00 PM vs Team 75 (Home)",opponent:"Team 75",homeAway:"home",snack:"Luna Scrivano"},
+    {date:"2026-10-17",label:"Sat Oct 17, 2:00 PM vs Team 72 (Home)",opponent:"Team 72",homeAway:"home",snack:"Olivia Carpenter"},
+    {date:"2026-10-24",label:"Sat Oct 24, 2:00 PM at Team 74 (Away)",opponent:"Team 74",homeAway:"away",snack:"Juliette Maglio"},
+    {date:"2026-11-01",label:"Sun Nov 1, 2:00 PM vs Team 75 (Home)",opponent:"Team 75",homeAway:"home",snack:"Shalom Amaya"},
+    {date:"2026-11-07",label:"Sat Nov 7, 2:00 PM at Team 76 (Away)",opponent:"Team 76",homeAway:"away",snack:"Norah Dineen"}
+  ];
   const slots=["GK","LB","RB","M","F"];
   const posNames={GK:"Goalie",LB:"Left Back",RB:"Right Back",M:"Support / Mid",F:"Forward"};
   const KEY="team71-v5-current", HIST="team71-v5-history";
+  const SKILL_KEY="team71-v5-skills";
   const PENDING_HIST="team71-pending-history-v12", HIST_MIGRATED="team71-history-migrated-v12";
   const QLEN=720, GLEN=2880, SUBINT=360;
 
@@ -391,6 +465,12 @@
   // hours of playing time when the app reopens.
   const STALE_CLOCK_MS=30*60*1000;
   let seasonHistory=loadJSON(HIST,[]);
+  // Skill rating is a coach's ongoing assessment of a player, not a per-game
+  // fact — it must survive New Game / Reset, unlike the rest of `state`.
+  // fresh() seeds state.skill from this on every new game; cloudPull() writes
+  // any remote change back into it so a rating set on one phone still shows
+  // up here after that phone starts its next game.
+  let skillRatings=loadJSON(SKILL_KEY,Object.fromEntries(roster.map(p=>[p,3])));
   let state=fresh();
   let timerHandle=null;
   let undoStack=[];
@@ -417,10 +497,12 @@
       present:Object.fromEntries(roster.map(p=>[p,true])),
       availability:Object.fromEntries(roster.map(p=>[p,"available"])),
       snackPlayer:"",
-      goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null},
+      goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null}, kickoffLineup:null,
       selectedBench:null, elapsed:0, quarter:0, running:false, ended:false,
       awaitingQuarterTransition:false, planBuilt:false,
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
+      posPlay:Object.fromEntries(roster.map(p=>[p,{GK:0,LB:0,RB:0,M:0,F:0}])),
+      skill:Object.fromEntries(roster.map(p=>[p,skillRatings[p]||3])),
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,
       shareCode:"", lastAuditCode:"", shareRole:"coach", syncVersion:0, lastCloudUpdate:0,
@@ -566,6 +648,7 @@
 
     state=fresh();
     goalieDraft=["","","",""];
+    lineupDraft=null;
     state.goaliePlan=["","","",""];
     state.lineup={GK:null,LB:null,RB:null,M:null,F:null};
     state.planBuilt=false;
@@ -1041,10 +1124,15 @@
       const remote=await r.json();
       if((remote.syncVersion||0) > (state.syncVersion||0)){
         applyingRemote=true;
-        const localShare={shareCode:state.shareCode,shareRole:state.shareRole};
+        // Which bench player you've tapped is this phone's own in-progress
+        // intent, never pushed to the server (and no longer even a synced
+        // field) - it must survive a remote snapshot the same way the local
+        // clock does below, or a routine 2-second poll wipes out a selection
+        // mid-tap before you can pick the position she's subbing into.
+        const localShare={shareCode:state.shareCode,shareRole:state.shareRole,selectedBench:state.selectedBench};
         const ownsTimer=state.running && state.timerOwnerId===CLIENT_ID && remote.timerOwnerId===CLIENT_ID;
         const localClock=ownsTimer ? {
-          elapsed:state.elapsed, play:state.play, gk:state.gk,
+          elapsed:state.elapsed, play:state.play, gk:state.gk, posPlay:state.posPlay,
           running:state.running, quarter:state.quarter,
           timerOwnerId:state.timerOwnerId, clockStartedAt:state.clockStartedAt,
           clockAnchorElapsed:state.clockAnchorElapsed,
@@ -1056,6 +1144,13 @@
         // remote snapshot must not drag it backwards.
         if(localClock) Object.assign(state,localClock);
         localStorage.setItem(KEY,JSON.stringify(state));
+        // Skill rating outlives any one game (see the note by skillRatings
+        // above) — fold in whatever the other coach just synced so a rating
+        // set on either phone survives this phone's next New Game.
+        if(state.skill){
+          skillRatings={...skillRatings,...state.skill};
+          localStorage.setItem(SKILL_KEY,JSON.stringify(skillRatings));
+        }
         renderAll();
         applyingRemote=false;
       }
@@ -1073,7 +1168,7 @@
     }
   }
   async function createSharedGame(){
-    if(state.shareRole==="viewer") state.shareRole="coach";
+    if(state.shareRole!=="coach") state.shareRole="coach";
     state.shareCode=randomGameCode();
     state.syncVersion=0;
     save();
@@ -1082,16 +1177,6 @@
     await loadCloudHistory();
     startCloudPolling();
     startAuditPolling();
-    renderAll();
-  }
-  async function joinSharedGame(){
-    const code=$("joinCode").value.trim().toUpperCase();
-    if(!code){alert("Enter the game code.");return}
-    const role=$("shareRole").value;
-    state.shareCode=code;state.shareRole=role;state.syncVersion=0;save();
-    await cloudPull();
-    await loadCloudHistory();
-    startCloudPolling();
     renderAll();
   }
   function leaveSharedGame(){
@@ -1106,6 +1191,21 @@
   function guardEdit(){
     if(canEdit()) return true;
     setStatus("Viewer mode: this phone follows the live game but cannot make changes.");
+    return false;
+  }
+
+  /**
+   * P0.1 touch reliability: a mis-timed double-fire on one tap (a ghost
+   * click after touchend, an accidental second tap before the button's own
+   * re-render lands) must never double a goal or double a substitution.
+   * Keyed per action-and-target — crediting Luna a goal twice in the same
+   * instant is blocked; crediting Luna and then Aria is not.
+   */
+  const lastActionAt={};
+  function rapidRepeat(key,ms=500){
+    const now=Date.now();
+    if(lastActionAt[key] && now-lastActionAt[key]<ms) return true;
+    lastActionAt[key]=now;
     return false;
   }
   function actionSave(domains=["all"],activate=false){
@@ -1188,17 +1288,29 @@
   function showTab(id){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===id));if(id==="history")renderHistory();if(id==="audit")loadAudit()}
 
   function seasonStats(){
-    const s=Object.fromEntries(roster.map(p=>[p,{minutes:0,gkQ:0,goals:0}]));
+    const s=Object.fromEntries(roster.map(p=>[p,{minutes:0,gkQ:0,goals:0,posMinutes:{GK:0,LB:0,RB:0,M:0,F:0}}]));
     seasonHistory.forEach(g=>roster.forEach(p=>{
       s[p].minutes+=Number(g.play?.[p]||0)/60;
       s[p].gkQ+=Number(g.gkQuarters?.[p]||0);
       s[p].goals+=Number(g.goals?.[p]||0);
+      if(g.posPlay?.[p]) slots.forEach(slot=>{s[p].posMinutes[slot]+=Number(g.posPlay[p][slot]||0)/60});
     }));
     return s;
   }
 
   function renderSetup(){
     $("opponent").value=state.opponent;$("homeAway").value=state.homeAway;
+
+    const scheduleSel=$("scheduleGame");
+    if(scheduleSel){
+      scheduleSel.innerHTML='<option value="">Choose a scheduled game…</option>';
+      SEASON_SCHEDULE.forEach(g=>{
+        const o=document.createElement("option");o.value=g.date;o.textContent=g.label;
+        if(state.opponent===g.opponent && state.homeAway===g.homeAway && state.snackPlayer===g.snack) o.selected=true;
+        scheduleSel.append(o);
+      });
+      scheduleSel.disabled=!canEdit();
+    }
 
     const snackSel=$("snackPlayer");
     if(snackSel){
@@ -1219,9 +1331,40 @@
       const avail=document.createElement("select");
       [["available","Available"],["rest","Resting"],["out","Out / Hurt"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;if(state.availability[p]===v)o.selected=true;avail.append(o)});
       avail.addEventListener("change",()=>setAvailability(p,avail.value));
-      r.append(name,avail);box.append(r);
+      const skill=document.createElement("select");skill.title="Coach-only skill rating";
+      for(let v=1;v<=5;v++){const o=document.createElement("option");o.value=v;o.textContent="Rank "+v;if((state.skill[p]||3)===v)o.selected=true;skill.append(o)}
+      skill.disabled=!canEdit();
+      skill.addEventListener("change",()=>setSkill(p,Number(skill.value)));
+      r.append(name,avail,skill);box.append(r);
     });
     $("planPreview").innerHTML=state.planBuilt?'<strong>Goalies:</strong> '+state.goaliePlan.map((g,i)=>"Q"+(i+1)+" "+(g||"—")).join(" • ")+"<br><strong>Starting five:</strong> "+onField().join(", "):"No plan built yet.";
+  }
+
+  function setSkill(p,rating){
+    if(!guardEdit())return;
+    pushUndo("skill rating");
+    state.skill[p]=rating;
+    skillRatings[p]=rating;
+    localStorage.setItem(SKILL_KEY,JSON.stringify(skillRatings));
+    actionSave(["setup"]);
+    // Refresh the labels (stars shown next to each name) without discarding
+    // any manual lineup adjustment already made — Regenerate Suggestion is
+    // the explicit way to re-run the algorithm with the new rating.
+    renderLineupPlanner();
+    setStatus(p+" rated "+rating+"/5.");
+  }
+
+  function applyScheduleGame(){
+    if(!guardEdit())return;
+    const g=SEASON_SCHEDULE.find(x=>x.date===$("scheduleGame").value);
+    if(!g)return;
+    pushUndo("apply scheduled game");
+    state.opponent=g.opponent;
+    state.homeAway=g.homeAway;
+    state.snackPlayer=g.snack;
+    actionSave(["setup"]);
+    renderAll();
+    setStatus("Loaded "+g.label+" — opponent, jersey, and snack are set.");
   }
 
   function setSnackPlayer(){
@@ -1229,6 +1372,8 @@
     pushUndo("snack assignment");
     state.snackPlayer=$("snackPlayer").value;
     actionSave(["setup"]);
+    // The Q4 goalie dropdown's visual default depends on the snack pick.
+    renderGoaliePlanner();
     setStatus(state.snackPlayer
       ? state.snackPlayer+" has snack today — she's the Q4 goalie by default."
       : "No snack assignment set.");
@@ -1246,10 +1391,16 @@
       const tag=document.createElement("div");tag.className="qtag";tag.textContent="Quarter "+(q+1);
       const sel=document.createElement("select");sel.style.marginTop="6px";
       const blank=document.createElement("option");blank.value="";blank.textContent="Choose goalie";sel.append(blank);
-      activePool().forEach(p=>{
+      // A blank Q4 already resolves to the snack player at Build Game Plan
+      // time (see computeGoaliePlan) — show that default in the dropdown
+      // itself too, so it's visible before the coach ever presses Build.
+      const pool=activePool();
+      const shownValue=(q===3 && !goalieDraft[q] && state.snackPlayer && pool.includes(state.snackPlayer))
+        ? state.snackPlayer : goalieDraft[q];
+      pool.forEach(p=>{
         const o=document.createElement("option");o.value=p;
         o.textContent=(q===3 && p===state.snackPlayer) ? p+" (snack — Q4 default)" : p;
-        if(goalieDraft[q]===p)o.selected=true;
+        if(shownValue===p)o.selected=true;
         sel.append(o);
       });
       sel.disabled=!canEdit();
@@ -1261,6 +1412,9 @@
         // Keep the visible goalie draft completely separate from shared live
         // state until Build Game Plan commits the four-quarter plan atomically.
         renderGoaliePlanner();
+        // Q1's goalie choice changes who is eligible for the starting field
+        // lineup below, so keep that preview in step.
+        if(q===0) renderLineupPlanner();
       };
       card.append(tag,sel);box.append(card);
     }
@@ -1286,9 +1440,11 @@
     pushUndo("clear goalie plan");
     goalieDraft=["","","",""];
     state.goaliePlan=["","","",""];
+    lineupDraft=null;
     if(state.elapsed===0){
       state.lineup.GK=null;
       state.planBuilt=false;
+      state.kickoffLineup=null;
     }
     actionSave(["setup","lineup"]);
     renderAll();
@@ -1298,6 +1454,126 @@
   function readGoaliePlannerSelections(){
     if(goalieDraft) return [...goalieDraft];
     return [...(state.goaliePlan||["","","",""])];
+  }
+
+  /**
+   * P2.2 starting lineup assistant. Fairness stays the primary rule (fewest
+   * season minutes get on the field first, unchanged from before) — skill
+   * only breaks a tie in minutes, which in practice is exactly the case that
+   * used to go wrong: at the start of a season everyone is tied at 0, and a
+   * plain minutes sort fell back to roster order, so a brand-new player with
+   * zero history could land in the starting five with three other
+   * inexperienced players just because of where her name sits alphabetically.
+   * Preferring the higher-rated player on a tie keeps at least one more
+   * experienced girl in every such group without ever overriding a real
+   * minutes difference.
+   */
+  function suggestStartingFive(pool,gk,stats){
+    const candidates=pool.filter(p=>p!==gk);
+    const ranked=[...candidates].sort((a,b)=>
+      (stats[a].minutes-stats[b].minutes) || ((state.skill[b]||3)-(state.skill[a]||3))
+    );
+    const field=ranked.slice(0,4);
+    const remaining=["LB","RB","M","F"];
+    const assigned={};
+    field.forEach(p=>{
+      let bestIdx=0;
+      for(let i=1;i<remaining.length;i++){
+        const cur=stats[p].posMinutes[remaining[i]]||0;
+        const best=stats[p].posMinutes[remaining[bestIdx]]||0;
+        if(cur<best) bestIdx=i;
+      }
+      assigned[remaining[bestIdx]]=p;
+      remaining.splice(bestIdx,1);
+    });
+    return assigned;
+  }
+
+  let lineupDraft=null;
+  function currentLineupDraft(){
+    if(!lineupDraft){
+      const pool=activePool();
+      const gk=readGoaliePlannerSelections()[0];
+      lineupDraft=suggestStartingFive(pool,gk,seasonStats());
+    }
+    return lineupDraft;
+  }
+
+  // Reconcile a possibly-stale or manually-edited draft against who's
+  // actually available right now: drop any pick who is no longer in the
+  // pool or is duplicated, then fill whatever's left from the same
+  // fairness+skill ranking the suggestion itself uses. Called at the moment
+  // Build Game Plan commits, so attendance changed after the draft was shown
+  // can never produce an invalid lineup.
+  function resolveLineupDraft(pool,gk){
+    const stats=seasonStats();
+    const candidates=pool.filter(p=>p!==gk);
+    const draft=currentLineupDraft();
+    const used=new Set();
+    const resolved={};
+    ["LB","RB","M","F"].forEach(slot=>{
+      const v=draft[slot];
+      if(v && candidates.includes(v) && !used.has(v)){resolved[slot]=v;used.add(v)}
+    });
+    const remaining=candidates.filter(p=>!used.has(p))
+      .sort((a,b)=>(stats[a].minutes-stats[b].minutes)||((state.skill[b]||3)-(state.skill[a]||3)));
+    ["LB","RB","M","F"].forEach(slot=>{
+      if(resolved[slot]) return;
+      const pick=remaining.shift();
+      if(pick) resolved[slot]=pick;
+    });
+    return resolved;
+  }
+
+  function renderLineupPlanner(){
+    const box=$("lineupPlanner");
+    if(!box)return;
+    const gk=readGoaliePlannerSelections()[0];
+    const pool=activePool();
+    // The Q1 goalie is usually chosen after this planner first renders (it
+    // starts out with no goalie excluded at all). Once picking a goalie would
+    // make the cached draft double-book her as a field starter too, drop the
+    // draft and let it recompute cleanly rather than showing a stale pick.
+    if(lineupDraft && Object.values(lineupDraft).includes(gk)) lineupDraft=null;
+    const draft=currentLineupDraft();
+    box.innerHTML="";
+    ["LB","RB","M","F"].forEach(slot=>{
+      const card=document.createElement("div");card.className="goalie-q";
+      const tag=document.createElement("div");tag.className="qtag";tag.textContent=posNames[slot];
+      const sel=document.createElement("select");sel.style.marginTop="6px";
+      const takenElsewhere=new Set(Object.entries(draft).filter(([s])=>s!==slot).map(([,p])=>p));
+      // Plain "(N)" instead of repeated star characters — stars were getting
+      // clipped by the dropdown's width on a phone.
+      pool.filter(p=>p!==gk && !takenElsewhere.has(p)).forEach(p=>{
+        const o=document.createElement("option");o.value=p;
+        o.textContent=p+" ("+(state.skill[p]||3)+")";
+        if(draft[slot]===p)o.selected=true;
+        sel.append(o);
+      });
+      sel.disabled=!canEdit();
+      sel.onchange=()=>{
+        if(!guardEdit())return;
+        lineupDraft={...currentLineupDraft(),[slot]:sel.value};
+        renderLineupPlanner();
+      };
+      // The ranking is also shown right on the card, not just inside the
+      // closed dropdown, so it's visible at a glance.
+      const rank=document.createElement("div");rank.className="muted small";rank.style.marginTop="4px";
+      const picked=draft[slot];
+      rank.textContent=picked ? "Ranking: "+(state.skill[picked]||3) : "";
+      card.append(tag,sel,rank);box.append(card);
+    });
+    const chosen=new Set(Object.values(draft));
+    const benchPreview=pool.filter(p=>p!==gk && !chosen.has(p));
+    const benchBox=$("lineupBenchPreview");
+    if(benchBox) benchBox.textContent=benchPreview.length ? "Bench to start: "+benchPreview.join(", ") : "";
+  }
+
+  function regenerateLineup(){
+    if(!guardEdit())return;
+    lineupDraft=null;
+    renderLineupPlanner();
+    setStatus("Starting lineup suggestion refreshed.");
   }
 
   /**
@@ -1321,7 +1597,17 @@
       const gk=(plan[q] && pool.includes(plan[q])) ? plan[q] : [...pool].sort((a,b)=>minutes[a]-minutes[b])[0];
       for(let half=0;half<2;half++){
         const eligible=pool.filter(p=>p!==gk);
-        const onField=[...eligible].sort((a,b)=>minutes[a]-minutes[b]).slice(0,4);
+        // Window 0 has real, already-committed data the instant the plan is
+        // built — use the FROZEN kickoff snapshot (not the live lineup,
+        // which can change from a manual sub the sheet needs to compare
+        // against) so the very first row is exact and a later manual change
+        // can still be detected against it.
+        const kickoff=state.kickoffLineup;
+        const useCommitted=q===0 && half===0 && state.planBuilt && kickoff && kickoff.GK===gk &&
+          ["LB","RB","M","F"].every(s=>kickoff[s] && pool.includes(kickoff[s]));
+        const onField=useCommitted
+          ? ["LB","RB","M","F"].map(s=>kickoff[s])
+          : [...eligible].sort((a,b)=>minutes[a]-minutes[b]).slice(0,4);
         const benchNow=eligible.filter(p=>!onField.includes(p));
         windows.push({
           startSec:q*QLEN+half*SUBINT,
@@ -1358,16 +1644,34 @@
     }).join("");
 
     const windows=projectFullGameSchedule();
+    const nowElapsed=displayElapsed();
+    // A window whose end time has already passed gets crossed off, like a
+    // paper checklist — nothing new to track, this game's clock already
+    // knows what time it is. The window actually in progress right now is
+    // additionally checked against the real field: any position that
+    // already differs from the plan is a manual change, so it's flagged
+    // instead of silently shown as if the plan were followed exactly. Past
+    // windows are shown crossed off but not re-checked against history —
+    // this sheet re-projects from now, it does not keep a full log of every
+    // earlier substitution (see V29's "Still open").
+    const posKeys=["gk","LB","RB","M","F"];
+    const actualNow={gk:state.lineup.GK,LB:state.lineup.LB,RB:state.lineup.RB,M:state.lineup.M,F:state.lineup.F};
     const scheduleRows=windows
-      ? windows.map((w,i)=>
-          "<tr><td>Q"+(Math.floor(i/2)+1)+" • "+fmt(w.startSec)+"–"+fmt(w.startSec+SUBINT)+"</td>"+
-          "<td>"+escapeHtml(w.gk||"—")+"</td>"+
-          "<td>"+escapeHtml(w.LB||"—")+"</td>"+
-          "<td>"+escapeHtml(w.RB||"—")+"</td>"+
-          "<td>"+escapeHtml(w.M||"—")+"</td>"+
-          "<td>"+escapeHtml(w.F||"—")+"</td>"+
-          "<td>"+escapeHtml(w.bench.join(", ")||"—")+"</td></tr>"
-        ).join("")
+      ? windows.map((w,i)=>{
+          const winEnd=w.startSec+SUBINT;
+          const done=nowElapsed>=winEnd;
+          const inProgress=!done && nowElapsed>=w.startSec;
+          const cell=(key)=>{
+            const planned=w[key]||"—";
+            if(inProgress && actualNow[key] && actualNow[key]!==w[key]){
+              return "<td class='diff-cell'>"+escapeHtml(actualNow[key])+"<span class='diff-tag'>manual change — plan: "+escapeHtml(planned)+"</span></td>";
+            }
+            return "<td>"+escapeHtml(planned)+"</td>";
+          };
+          return "<tr"+(done?" class='win-done'":"")+"><td>"+(done?"✓ ":"")+"Q"+(Math.floor(i/2)+1)+" • "+fmt(w.startSec)+"–"+fmt(winEnd)+"</td>"+
+            posKeys.map(cell).join("")+
+            "<td>"+escapeHtml(w.bench.join(", ")||"—")+"</td></tr>";
+        }).join("")
       : "<tr><td colspan='7' class='muted'>Need at least 5 available players to project a rotation.</td></tr>";
 
     box.innerHTML=
@@ -1376,7 +1680,10 @@
       "<h3>Snack</h3>"+
       "<div>"+(state.snackPlayer?escapeHtml(state.snackPlayer)+" — plays goalie in Q4":"Not set")+"</div>"+
       "<h3>Projected Rotation Plan</h3>"+
-      "<div class='muted' style='font-size:.75rem'>Assumes an even rotation from kickoff — the live fairness engine's own rule. Real substitutions may differ; reopen this sheet any time to re-project from the current roster.</div>"+
+      "<div class='muted' style='font-size:.75rem'>Assumes an even rotation from kickoff — the live fairness engine's own rule. "+
+      "<span style='text-decoration:line-through'>Crossed-off</span> windows have already finished. "+
+      "<span style='background:#fef3c7;color:#92400e;font-weight:600;padding:0 4px;border-radius:3px'>Highlighted</span> positions in the current window are a manual change from the plan. "+
+      "Reopen this sheet any time to re-project and re-check.</div>"+
       "<table class='schedule'><thead><tr><th>Time</th><th>GK</th><th>LB</th><th>RB</th><th>M</th><th>F</th><th>Bench</th></tr></thead><tbody>"+scheduleRows+"</tbody></table>"+
       "<h3>Attendance</h3>"+
       "<table><thead><tr><th>Player</th><th>Present</th><th>Status</th></tr></thead><tbody>"+attendanceRows+"</tbody></table>"+
@@ -1396,7 +1703,9 @@
       "<style>body{font-family:system-ui,-apple-system,sans-serif;background:#fff;color:#111;padding:16px;max-width:700px;margin:0 auto}"+
       "h2{margin:0 0 2px 0}h3{margin:14px 0 4px 0;font-size:.95rem}.muted{color:#555}"+
       "table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:4px}"+
-      "th,td{border:1px solid #bbb;padding:4px 6px;text-align:left}th{background:#f1f5f9}</style></head>"+
+      "th,td{border:1px solid #bbb;padding:4px 6px;text-align:left}th{background:#f1f5f9}"+
+      "tr.win-done td{color:#888;text-decoration:line-through}tr.win-done td:first-child{text-decoration:none;font-weight:600;color:#166534}"+
+      ".diff-cell{background:#fef3c7;color:#92400e;font-weight:600}.diff-tag{font-size:.75em;font-weight:400;display:block}</style></head>"+
       "<body>"+$("planPrintSheet").innerHTML+"</body></html>";
     const blob=new Blob([html],{type:"text/html"});
     const url=URL.createObjectURL(blob);
@@ -1423,6 +1732,7 @@
         body:JSON.stringify({
           goaliePlan:state.goaliePlan,
           lineup:state.lineup,
+          kickoffLineup:state.kickoffLineup,
           planBuilt:state.planBuilt,
           nextSubAt:state.nextSubAt,
           subDone:state.subDone,
@@ -1492,17 +1802,20 @@
     state.opponent=$("opponent").value.trim()||"Opponent"; state.homeAway=$("homeAway").value;
     const pool=activePool();if(pool.length<5){alert("You need at least 5 available players.");return}
     pushUndo("build plan");
-    const stats=seasonStats();
 
     // The visible dropdowns are the source of truth at the instant Build Game
     // Plan is pressed. This guarantees Q1 on the field matches Q1 on screen.
     state.goaliePlan=computeGoaliePlan(pool,readGoaliePlannerSelections());
     const gk=state.goaliePlan[0];
-    const field=pool.filter(p=>p!==gk).sort((a,b)=>stats[a].minutes-stats[b].minutes).slice(0,4);
-    state.lineup={GK:gk,LB:field[0]||null,RB:field[1]||null,M:field[2]||null,F:field[3]||null};
+    const field=resolveLineupDraft(pool,gk);
+    state.lineup={GK:gk,LB:field.LB||null,RB:field.RB||null,M:field.M||null,F:field.F||null};
 
     // Safety invariant: Q1 planner and the live field must always agree.
     state.lineup.GK=state.goaliePlan[0];
+    // Frozen at the instant of kickoff, so the printable sheet can tell a
+    // manual change apart from live state later — comparing "now" to itself
+    // would never show a difference.
+    state.kickoffLineup={GK:state.lineup.GK,LB:state.lineup.LB,RB:state.lineup.RB,M:state.lineup.M,F:state.lineup.F};
     state.planBuilt=true;
     state.suggestedSub=null;
     state.subDone=[false,false,false,false];
@@ -1523,21 +1836,26 @@
     // Hard invariant after authoritative server commit.
     state.lineup.GK=state.goaliePlan[0];
     goalieDraft=[...state.goaliePlan];
+    lineupDraft={LB:state.lineup.LB,RB:state.lineup.RB,M:state.lineup.M,F:state.lineup.F};
     save();
 
     renderAll();
-    showTab("game");
     addAudit("Game plan built","Q1 GK "+state.lineup.GK+" • vs "+state.opponent);
-    setStatus("Game plan built. Q1 goalie: "+state.lineup.GK+". Review the field, then start the clock.");
+    setStatus("Game plan built. Q1 goalie: "+state.lineup.GK+". Head to the Game tab when you're ready to start the clock.");
   }
 
   function renderGame(){
     if($("soundToggle")) $("soundToggle").checked=state.soundEnabled!==false;
-    $("gameLabel").textContent="Team 71 vs "+state.opponent;
     $("oppName").textContent=state.opponent;$("ourScore").textContent=state.ourScore;$("theirScore").textContent=state.theirScore;$("quickUs").textContent=state.ourScore;$("quickThem").textContent=state.theirScore;
+    const usHome=state.homeAway==="home";
+    $("ourScore").classList.toggle("jersey-home",usHome);
+    $("ourScore").classList.toggle("jersey-away",!usHome);
+    $("theirScore").classList.toggle("jersey-home",!usHome);
+    $("theirScore").classList.toggle("jersey-away",usHome);
     const atQuarterStart = !state.running && state.elapsed===state.quarter*QLEN && state.elapsed>0;
-    $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+" of 4</strong>"+
+    $("quarterLabel").innerHTML="<strong>Q"+(state.quarter+1)+"</strong>"+
       (atQuarterStart ? " <span class='pill'>Lineup ready — press Start when positioned</span>" : "");
+    $("quarterLabelTop").innerHTML="<strong>Q"+(state.quarter+1)+"</strong>";
 
     const lastSub=$("lastSubBanner");
     if(lastSub){
@@ -1554,7 +1872,9 @@
     const totalNow=displayElapsed();
     const quarterNow=Math.max(0,totalNow-state.quarter*QLEN);
     $("timer").textContent=fmt(Math.min(QLEN,quarterNow));
-    $("totalTimer").textContent="Game "+fmt(totalNow)+" • Quarter "+(state.quarter+1)+" of 4";
+    $("totalTimer").textContent="Game "+fmt(totalNow);
+    $("timerTop").textContent=fmt(Math.min(QLEN,quarterNow));
+    $("totalTimerTop").textContent="Game "+fmt(totalNow);
     $("startPauseBtn").textContent=state.awaitingQuarterTransition ? "Start Next Quarter" : (state.running?"Pause":(state.elapsed?"Resume":"Start"));
     $("startPauseBtn").disabled = state.ended || (!canEdit());
     $("nextQuarterBtn").disabled = state.ended || (!canEdit());
@@ -1576,7 +1896,11 @@
     const jersey=state.homeAway==="home"?"home":"away";
     const positions={F:"posF",LB:"posLB",RB:"posRB",M:"posM",GK:"posGK"};
     Object.entries(positions).forEach(([slot,id])=>{
-      const p=state.lineup[slot],el=$(id);el.innerHTML='<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+(p?' • '+minfmt(state.play[p])+' min':'')+'</div>';
+      const p=state.lineup[slot],el=$(id);
+      const goals=p?(state.goals[p]||0):0;
+      const badge=goals>0?'<div class="goal-badge">'+goals+'</div>':'';
+      const minBadge=p?'<div class="min-badge">'+minfmt(state.play[p])+'m</div>':'';
+      el.innerHTML=badge+minBadge+'<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+'</div>';
       el.onclick=()=>{if(!canEdit()||state.ended){return}if(state.selectedBench)makeManualSub(state.selectedBench,slot)};
     });
     renderBench();renderStatusPlayers();renderMinutes();renderGoals();renderSubSuggestion();
@@ -1716,6 +2040,7 @@
 
   function confirmReplacement(slot,outgoingPlayer,incoming){
     if(!guardEdit())return;
+    if(rapidRepeat("confirmReplacement:"+slot)) return;
 
     // The slot may have sat empty for a few seconds while the coach decided;
     // settle minutes for everyone else on the field up to right now first.
@@ -1803,10 +2128,29 @@
     const incoming=b.slice(0,n);
     const outgoing=fieldSlots.slice(0,n);
 
+    // P1.4 position diversity: WHICH of the vacated slots each incoming
+    // player takes is still open at this point — outgoing[] only fixed WHO
+    // is leaving, by minutes, same as before. Hand each incoming player (in
+    // the same lowest-minutes-first order, so the fairness priority is
+    // unchanged) the open slot she has played the least this game, so a fair
+    // sub doesn't also happen to put her back in the same position for the
+    // fourth time. Ties (including "never played any of these", true for a
+    // brand-new player) fall back to slot order.
+    const remaining=outgoing.slice();
+    const assignment=incoming.map(p=>{
+      let bestIdx=0;
+      for(let i=1;i<remaining.length;i++){
+        const cur=(state.posPlay[p]||{})[remaining[i].slot]||0;
+        const best=(state.posPlay[p]||{})[remaining[bestIdx].slot]||0;
+        if(cur<best) bestIdx=i;
+      }
+      return remaining.splice(bestIdx,1)[0];
+    });
+
     state.suggestedSub={
       incoming,
-      outgoingPlayers:outgoing.map(x=>x.p),
-      outgoingSlots:outgoing.map(x=>x.slot)
+      outgoingPlayers:assignment.map(x=>x.p),
+      outgoingSlots:assignment.map(x=>x.slot)
     };
   }
 
@@ -1855,6 +2199,7 @@
   function acceptSuggestedSub(){
     if(!guardEdit())return;
     if(!state.suggestedSub) return;
+    if(rapidRepeat("acceptSuggestedSub")) return;
 
     // v23.1: with a full-strength bench this exactly reverses the previous
     // whole-bench swap, so an accidental double-tap (or several) silently
@@ -1897,7 +2242,6 @@
     setStatus("Sub made: "+desc+". Clock continued running.");
   }
 
-
   function skipScheduledSub(){
     if(!guardEdit()) return;
     if(state.subDone[state.quarter]){
@@ -1934,8 +2278,8 @@
       box.append(b);
     });
   }
-  function teamGoal(p){if(!guardEdit())return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Team 71 goal",p+" scored — "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Goal: "+p)}
-  function oppGoal(){if(!guardEdit())return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Opponent goal","Score "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Opponent goal recorded.")}
+  function teamGoal(p){if(!guardEdit())return;if(rapidRepeat("teamGoal:"+p))return;pushUndo("Team 71 goal");state.goals[p]++;state.ourScore++;state.goalLog.push({type:"team",player:p,q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Team 71 goal",p+" scored — "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Goal: "+p)}
+  function oppGoal(){if(!guardEdit())return;if(rapidRepeat("oppGoal"))return;pushUndo("opponent goal");state.theirScore++;state.goalLog.push({type:"opp",q:state.quarter+1,time:fmt(displayElapsed())});actionSave(["score"]);addAudit("Opponent goal","Score "+state.ourScore+"-"+state.theirScore);renderAll();setStatus("Opponent goal recorded.")}
   function undoLastGoal(){
     if(!guardEdit())return;
     if(!state.goalLog.length){setStatus("No goal to undo.");return}
@@ -2060,7 +2404,13 @@
     const d=Math.max(0,capped-state.elapsed);
 
     if(d>0){
-      onField().forEach(p=>state.play[p]+=d);
+      slots.forEach(slot=>{
+        const p=state.lineup[slot];
+        if(!p) return;
+        state.play[p]+=d;
+        if(!state.posPlay[p]) state.posPlay[p]={GK:0,LB:0,RB:0,M:0,F:0};
+        state.posPlay[p][slot]+=d;
+      });
       if(state.lineup.GK)state.gk[state.lineup.GK]+=d;
       state.elapsed=capped;
     }
@@ -2333,6 +2683,7 @@
       ourScore:state.ourScore,
       theirScore:state.theirScore,
       play:JSON.parse(JSON.stringify(state.play)),
+      posPlay:JSON.parse(JSON.stringify(state.posPlay)),
       gkQuarters,
       goals:JSON.parse(JSON.stringify(state.goals)),
       goalLog:JSON.parse(JSON.stringify(state.goalLog))
@@ -2376,7 +2727,6 @@
 
   function renderShared(){
     if($("shareCodeDisplay")) $("shareCodeDisplay").textContent=state.shareCode||"—";
-    if($("shareRole")) $("shareRole").value=state.shareRole||"coach";
     if(state.shareCode) setSyncStatus("live",state.shareRole==="viewer"?"Shared • viewing live":"Shared • connected");
     else setSyncStatus("","Local only");
 
@@ -2390,7 +2740,7 @@
     if(viewer && !$("game").classList.contains("active")) showTab("game");
 
     // Controls whose only restriction is Coach vs Viewer.
-    ["buildPlanBtn","clearGoaliesBtn","newGameBtn","undoBtn","allAvailableBtn","historyNewGameBtn",
+    ["buildPlanBtn","clearGoaliesBtn","regenerateLineupBtn","newGameBtn","undoBtn","allAvailableBtn","historyNewGameBtn",
      "deleteAllHistoryBtn","clearActiveBtn"].forEach(id=>{
       const el=$(id); if(el) el.disabled=viewer;
     });
@@ -2452,14 +2802,17 @@
 
   $("opponent").addEventListener("input",()=>{state.opponent=$("opponent").value;actionSave(["setup"])});$("homeAway").addEventListener("change",()=>{state.homeAway=$("homeAway").value;actionSave(["setup"])});
   $("snackPlayer").addEventListener("change",setSnackPlayer);
+  $("scheduleGame").addEventListener("change",applyScheduleGame);
   $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});actionSave(["setup","lineup"]);renderAll()};
   $("buildPlanBtn").onclick=buildPlan;
+  $("regenerateLineupBtn").onclick=regenerateLineup;
   $("clearGoaliesBtn").onclick=clearGoaliePlan;$("startPauseBtn").onclick=startPause;$("nextQuarterBtn").onclick=nextQuarter;$("endGameBtn").onclick=endGame;$("undoBtn").onclick=undo;
   $("acceptSubBtn").onclick=acceptSuggestedSub;$("changeSubBtn").onclick=()=>{state.suggestedSub=null;suggestSub(true);actionSave(["lineup"]);renderSubSuggestion()};$("skipSubBtn").onclick=skipScheduledSub;
   $("oppGoalBtn").onclick=oppGoal;$("undoGoalBtn").onclick=undoLastGoal;$("startNextQuarterBtn").onclick=startNextQuarter;$("closeQuarterBtn").onclick=()=>$("quarterModal").classList.remove("show");
   $("replaceLaterBtn").onclick=()=>$("replaceModal").classList.remove("show");
   $("printPlanBtn").onclick=openGamePlanPrint;
   $("viewerPlanBtn").onclick=openGamePlanPrint;
+  $("gameTabPlanBtn").onclick=openGamePlanPrint;
   $("viewerLeaveBtn").onclick=leaveSharedGame;
   $("printPlanNowBtn").onclick=()=>window.print();
   $("downloadPlanBtn").onclick=downloadGamePlanSheet;
@@ -2480,11 +2833,10 @@
 
   $("createShareBtn").onclick=()=>{if(!guardEdit())return;createSharedGame()};
   $("connectionTestBtn").onclick=runConnectionTest;
-  $("joinShareBtn").onclick=joinSharedGame;
   $("leaveShareBtn").onclick=leaveSharedGame;
 
 
-  function renderAll(){renderSetup();renderGoaliePlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
+  function renderAll(){renderSetup();renderGoaliePlanner();renderLineupPlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
   load();
   if(state.running && state.timerOwnerId===CLIENT_ID){
     requestWakeLock();
