@@ -1444,14 +1444,17 @@ test("the idle poll cadence is 10s, not 5s", async () => {
 
 /* ============================================================= rendering */
 
-test("the field shows five positions with names, and keeps each marker short enough not to collide with its neighbors", async () => {
+test("the field shows five positions with names and minutes, and keeps each marker's own label short enough not to collide with its neighbors", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
   await run(app, 300);
   for (const id of ["posGK", "posLB", "posRB", "posM", "posF"]) {
-    const txt = app.$(id).textContent;
+    const el = app.$(id);
+    const txt = el.textContent;
     assert.ok(!txt.includes("Empty"), id + " should hold a player");
-    assert.doesNotMatch(txt, /\d/, id + " no longer shows minutes on the field marker itself — every marker needs to stay short so five of them plus the score/clock bars all fit on the field without overlapping; minutes are still visible in the bench list and the minutes table");
+    assert.match(txt, /\d/, id + " should show minutes");
+    assert.ok(el.querySelector(".min-badge"), id + " shows minutes as a corner badge, not appended to the position label — an appended label is what caused the position markers to overlap each other and the scoreboard/clock in earlier testing");
+    assert.doesNotMatch(el.querySelector(".fpos").textContent, /\d/, id + "'s position label itself should stay just the position name");
   }
   app.close();
 });

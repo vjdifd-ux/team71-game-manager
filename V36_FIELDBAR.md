@@ -99,10 +99,10 @@ What that turned up and fixed:
   also only caught by measuring, since visually the two are far enough
   apart on screen to not obviously look wrong in a quick glance. Fixed by
   moving Forward from 20% down to 26%.
-- The field position labels also dropped their "• N min" suffix (minutes
-  are still shown in the bench list and the minutes table) so all five
+- The field position labels also dropped their "• N min" suffix so all five
   marker boxes render at one consistent, shorter height instead of varying
-  by how long each position's name happens to be.
+  by how long each position's name happens to be. (Reversed in round 4 below
+  — this was a real loss, not just a height fix.)
 
 The quarter/clock layout also went through a couple of corrections based on
 direct feedback: first moved to a single block on the left, then corrected
@@ -116,6 +116,27 @@ and all five against the actual score/quarter/clock text — now measures
 zero overlap, including the transient "Lineup ready" reminder state, which
 needed its own width cap once it was checked directly instead of assumed
 fine.
+
+---
+
+## Round 4: minutes were useful, bring them back — just not as text
+
+"You should also not have removed the times from the players on the field
+that was useful."
+
+Fair — round 3 dropped per-player minutes from the field markers to fix the
+overlaps, and that was a real feature loss, not just a cosmetic trim.
+Restored them, but as a small corner badge on the shirt icon (e.g. "12m"),
+the same way goals already show as a badge on the opposite corner, instead
+of back on the position-name line. That keeps every marker box at the same
+fixed height that fixed the round-3 overlaps — the badge is positioned over
+the shirt rather than adding a line of text below it — while the minutes
+are visible on the field again same as before.
+
+Checked the same way as round 3: measured `getBoundingClientRect()` for
+every position, both badges, and the score/quarter/clock text, including
+the case where a player has both a goal badge and a minutes badge at once
+(opposite corners of the same shirt) — zero overlaps.
 
 ---
 
