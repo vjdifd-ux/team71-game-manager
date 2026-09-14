@@ -72,9 +72,67 @@ the total-time text no longer contains "Quarter". Both verified against the
 actual regressions above by reverting each fix and confirming the test
 fails.*
 
+## Round 3: the overlap was still there — screenshots weren't enough either
+
+Round 2 claimed the Goalie/Support-Mid overlap was fixed and backed that with
+a screenshot. It wasn't actually fixed — eyeballing a picture isn't a
+reliable way to catch a 15-20px overlap between two boxes that are visually
+close together anyway. Called out directly, correctly, with the request to
+stop guessing and ask before finishing next time.
+
+This round switched from "look at a screenshot" to actually measuring: a
+headless browser loads the real page, and every position marker's and every
+piece of on-field text's actual `getBoundingClientRect()` is checked against
+every other one, pairwise, for real pixel overlap — not judged by eye.
+
+What that turned up and fixed:
+
+- **Goalie really did overlap Support/Mid** (confirmed: an 18px overlap,
+  not a close call). Fixing it required moving Support/Mid down slightly
+  (66% → 69%) in addition to Goalie (→ 88%), since the two markers'
+  clearance is a function of both positions together.
+- **Left Back and Right Back also overlapped Support/Mid** — smaller (14
+  and 21px) and never reported, found only because this round checked every
+  pair, not just the one that was called out.
+- **Forward overlapped the scoreboard itself** — its shirt icon sat under
+  the bottom edge of the score digits by about 14px. Also never reported;
+  also only caught by measuring, since visually the two are far enough
+  apart on screen to not obviously look wrong in a quick glance. Fixed by
+  moving Forward from 20% down to 26%.
+- The field position labels also dropped their "• N min" suffix (minutes
+  are still shown in the bench list and the minutes table) so all five
+  marker boxes render at one consistent, shorter height instead of varying
+  by how long each position's name happens to be.
+
+The quarter/clock layout also went through a couple of corrections based on
+direct feedback: first moved to a single block on the left, then corrected
+to put the quarter alone on the left and the clock (quarter time stacked
+above total game time) on the right — which, as a side effect, also removed
+the last source of horizontal collision with Goalie, since neither text
+block now sits anywhere near the center of the field where Goalie lives.
+
+Every pairwise combination — all five field positions against each other,
+and all five against the actual score/quarter/clock text — now measures
+zero overlap, including the transient "Lineup ready" reminder state, which
+needed its own width cap once it was checked directly instead of assumed
+fine.
+
+---
+
 ## Still open
 
+- **This class of bug can't be caught by `npm test`.** jsdom (what the
+  existing test suite runs against) doesn't compute real CSS layout — no
+  `getBoundingClientRect()`, no actual pixel positions — so an automated
+  test can check DOM structure but not "does this visually overlap that."
+  Catching it requires an actual browser, which is how round 3 verified
+  this: a temporary, not-committed headless-Chromium script. Making that a
+  permanent, always-run part of the test suite would mean adding a real
+  browser dependency (and likely a network fetch to install one) to a
+  project whose whole test suite currently runs in ~20 seconds with no
+  network or browser required — a real tradeoff, not applied here without
+  asking first.
 - Real device rendering (an actual phone, in bright sunlight, mid-game) is
-  still the real test — this round was checked with a headless browser
-  screenshot at phone width, which is a large step up from CSS math alone
-  but still not the same as seeing it on the sideline.
+  still the final test. This round's verification is a large step up from
+  both CSS math alone (round 1) and a single screenshot glance (round 2),
+  but it's still a phone-width headless browser, not an actual phone.

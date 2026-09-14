@@ -109,9 +109,9 @@ did not land and you are running older code.
   Team 71 is actually wearing that day (red when home, blue when away, the
   opponent in the other color), matching the shirts on the field itself.
   Score, positions, and time left are all in one glance instead of
-  scattered across separate cards. The big number is the **quarter** clock,
-  resetting to 0:00 each quarter; total game time is the smaller line next
-  to it.
+  scattered across separate cards. Bottom-left is the quarter ("Q1", "Q2",
+  …); bottom-right, the **quarter** clock (resetting to 0:00 each quarter)
+  stacked above the smaller total-game-time line underneath it.
 - **Goalie Rotation — Full Game** sits below the field now — useful as a
   reference, not something you need to check every few seconds.
 - The clock stops only when you tap Pause, when a quarter ends, or when you tap
