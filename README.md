@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v36 FIELDBAR
+# Team 71 Game Manager — v37 PRINTDARK
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,9 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v36:** see [`V36_FIELDBAR.md`](V36_FIELDBAR.md)
-- **Earlier changes:** [`V35_FIELDHUD.md`](V35_FIELDHUD.md),
+- **What changed in v37:** see [`V37_PRINTDARK.md`](V37_PRINTDARK.md)
+- **Earlier changes:** [`V36_FIELDBAR.md`](V36_FIELDBAR.md),
+  [`V35_FIELDHUD.md`](V35_FIELDHUD.md),
   [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md),
   [`V33_PRINTFIX.md`](V33_PRINTFIX.md) (incomplete — see V34),
   [`V32_SCHEDULE.md`](V32_SCHEDULE.md), [`V31_CLEAN.md`](V31_CLEAN.md),
@@ -24,10 +25,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v36 FIELDBAR
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v37 PRINTDARK
 ```
 
-Worth a glance before every game. If it does not say `v36 FIELDBAR`, the deploy
+Worth a glance before every game. If it does not say `v37 PRINTDARK`, the deploy
 did not land and you are running older code.
 
 ---
@@ -72,11 +73,13 @@ did not land and you are running older code.
    have already finished is crossed off automatically, and if the current
    window's real lineup no longer matches what was planned (a manual sub),
    the changed position is highlighted with what actually happened and what
-   the plan said. Print it, Download it as a standalone HTML file, or just
-   screenshot it on a phone — worth doing before you leave the house in case
-   the app or the phone lets you down mid-game. Reachable from the **Game
-   tab** too (a **Game Plan** button next to the other game controls, not
-   just Pregame), including for a Viewer's phone.
+   the plan said. Column headers and every player's name print bold and
+   solid black, not the app's own pale gray, so the sheet is actually
+   readable off a real printer. Print it, Download it as a standalone HTML
+   file, or just screenshot it on a phone — worth doing before you leave the
+   house in case the app or the phone lets you down mid-game. Reachable from
+   the **Game tab** too (a **Game Plan** button next to the other game
+   controls, not just Pregame), including for a Viewer's phone.
 
 **Sharing with the second phone**
 
@@ -166,7 +169,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                146 tests — see below
+test/                147 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -191,7 +194,7 @@ npm install
 npm test
 ```
 
-146 tests, about 20 seconds, no network or Cloudflare account required.
+147 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game
