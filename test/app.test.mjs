@@ -134,6 +134,41 @@ test("REGRESSION: the printable game plan is a fallback record of the pregame se
   app.close();
 });
 
+test("REGRESSION: the print sheet's headers and player names are dark and bold, not the app's pale dark-theme gray", async () => {
+  const app = await readyGame();
+  await app.click("printPlanBtn");
+
+  // Every name-bearing cell wraps its text in .pname (bold in the stylesheet
+  // below); this failed silently on a real printer because the color bug
+  // was on plain <th> headers, not the names themselves, but the fix
+  // (bold names) is checked directly against the actual rendered content.
+  const names = [...app.$("planPrintSheet").querySelectorAll(".pname")].map((el) => el.textContent);
+  assert.ok(names.some((n) => n.includes(app.state().lineup.GK)), "the Q1 goalie's name is wrapped for bold print styling");
+  assert.ok(names.length >= roster.length, "every attendance row's name is wrapped too");
+
+  // The real bug: a page-wide `th{color:var(--muted)}` rule (tuned for the
+  // dark theme's own tables) directly matches every <th>, including the
+  // print sheet's — a direct match beats an inherited color no matter how
+  // specific the ancestor is, so without a print-sheet-specific override
+  // the column headers rendered in a pale gray-blue over an already-light
+  // header background. Confirmed by reverting this rule and rerunning.
+  const rules = [...app.doc.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch { return []; } });
+  // There are two separate ".print-sheet th{...}" declarations (one sets
+  // background elsewhere, this fix sets color) — check every matching rule
+  // for the property we actually care about, not just the first hit.
+  const thColor = rules
+    .filter((r) => r.selectorText === ".print-sheet th")
+    .map((r) => r.style.getPropertyValue("color"))
+    .find((c) => c);
+  const pnameWeight = rules
+    .filter((r) => r.selectorText === ".print-sheet .pname")
+    .map((r) => r.style.getPropertyValue("font-weight"))
+    .find((w) => w);
+  assert.equal(thColor, "#111", "print sheet headers must have their own dark color rule, not the dark-theme muted gray");
+  assert.equal(pnameWeight, "700", "names need their own bold font-weight rule to read reliably off a real printer");
+  app.close();
+});
+
 test("the printable game plan reflects the committed lineup once the plan is built", async () => {
   const app = await readyGame();
   await app.click("printPlanBtn");
@@ -1670,8 +1705,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v36 so the deployed build is identifiable", async () => {
+test("the version banner says v37 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v36 FIELDBAR/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v37 PRINTDARK/);
   app.close();
 });
