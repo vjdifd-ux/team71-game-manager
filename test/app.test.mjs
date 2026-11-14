@@ -381,6 +381,89 @@ test("a manual substitution never moves the game clock", async () => {
   app.close();
 });
 
+/* ====================================================== field-to-field swap */
+
+test("tapping one on-field player selects her for a swap", async () => {
+  const app = await readyGame();
+  await app.tapField("LB");
+  assert.equal(app.state().selectedField, "LB");
+  assert.ok(app.$("posLB").classList.contains("selected"));
+  app.close();
+});
+
+test("tapping the same selected player again deselects her", async () => {
+  const app = await readyGame();
+  await app.tapField("LB");
+  await app.tapField("LB");
+  assert.equal(app.state().selectedField, null);
+  assert.ok(!app.$("posLB").classList.contains("selected"));
+  app.close();
+});
+
+test("tapping a second on-field player swaps the two positions", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 90);
+  const before = app.state();
+  const atLB = before.lineup.LB, atRB = before.lineup.RB;
+
+  await app.swapField("LB", "RB");
+  const after = app.state();
+
+  assert.equal(after.lineup.LB, atRB, "RB's player is now at LB");
+  assert.equal(after.lineup.RB, atLB, "LB's player is now at RB");
+  assert.equal(after.selectedField, null, "selection clears once the swap completes");
+  assert.equal(Math.round(after.elapsed), 90, "a swap never moves the game clock");
+  assert.equal(Math.round(after.play[atLB]), 90, "total playing time is untouched by a swap — she was on the field the whole time either way");
+  assert.equal(Math.round(after.play[atRB]), 90);
+  assert.match(app.$("lastSubBanner").textContent, new RegExp(atLB + ".*↔.*" + atRB));
+  app.close();
+});
+
+test("swapping the goalie into an outfield spot updates this quarter's goalie plan", async () => {
+  const app = await readyGame();
+  const gk = app.state().lineup.GK, lb = app.state().lineup.LB;
+
+  await app.swapField("GK", "LB");
+  const s = app.state();
+
+  assert.equal(s.lineup.GK, lb, "LB's player is now in goal");
+  assert.equal(s.lineup.LB, gk, "the old goalie is now at LB");
+  assert.equal(s.goaliePlan[0], lb, "Q1's planned goalie reflects who is actually in goal now");
+  app.close();
+});
+
+test("tapping an empty field position while one is selected cancels the selection instead of swapping", async () => {
+  const app = await readyGame();
+  const victim = app.state().lineup.RB;
+  await app.setAvailPregame(victim, "out");   // vacates RB, leaving it genuinely empty
+  await app.dismissReplacement();             // leave it empty for now rather than auto-filling it
+
+  const atLB = app.state().lineup.LB;
+  await app.tapField("LB");
+  assert.equal(app.state().selectedField, "LB");
+
+  await app.tapField("RB");
+  assert.equal(app.state().selectedField, null, "tapping the empty slot cancels the selection");
+  assert.equal(app.state().lineup.LB, atLB, "nothing was swapped into the empty slot");
+  assert.equal(app.state().lineup.RB, null);
+  app.close();
+});
+
+test("selecting a bench player for a sub cancels an in-progress field-swap selection, and vice versa", async () => {
+  const app = await readyGame();
+  await app.tapField("LB");
+  assert.equal(app.state().selectedField, "LB");
+
+  await app.selectBench("Aria Stagnitta");
+  assert.equal(app.state().selectedField, null, "field selection cleared once a bench pick starts");
+  assert.equal(app.state().selectedBench, "Aria Stagnitta");
+
+  await app.tapField("RB");
+  assert.equal(app.state().selectedBench, null, "bench selection cleared once a field-swap pick starts");
+  app.close();
+});
+
 test("REGRESSION: a substitution leaves a persistent \"last sub\" banner, so a name change is never a silent surprise", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
@@ -1796,8 +1879,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v38 so the deployed build is identifiable", async () => {
+test("the version banner says v39 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v38 FRESHSTART/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v39 SWAP/);
   app.close();
 });

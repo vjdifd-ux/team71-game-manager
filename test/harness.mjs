@@ -261,6 +261,18 @@ export async function openApp({
       await flush();
     },
 
+    /** Tap one field position, for a field-to-field swap (its own click, no bench involved). */
+    async tapField(slot) {
+      $({ GK: "posGK", LB: "posLB", RB: "posRB", M: "posM", F: "posF" }[slot]).click();
+      await flush();
+    },
+
+    /** Tap one field position, then another, to swap the two players' positions. */
+    async swapField(slotA, slotB) {
+      await this.tapField(slotA);
+      await this.tapField(slotB);
+    },
+
     async scoreGoal(name) {
       const short = name.split(" ")[0];
       const btn = [...doc.querySelectorAll("#goalScorers button")]

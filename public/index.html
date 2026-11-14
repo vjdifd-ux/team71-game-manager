@@ -89,6 +89,9 @@
     .fp{position:absolute;transform:translate(-50%,-50%);width:100px;min-height:44px;text-align:center;cursor:pointer}
     .shirt{width:54px;height:42px;margin:0 auto 5px;border-radius:8px 8px 10px 10px;border:2px solid rgba(0,0,0,.3);box-shadow:0 2px 5px rgba(0,0,0,.25)}
     .shirt.home{background:var(--home)}.shirt.away{background:var(--away)}.shirt.gk{background:#30343b}
+    /* Picked up for a field-to-field swap — tap this player, then tap
+       another, to trade positions without going through the bench. */
+    .fp.selected .shirt{outline:3px solid #60a5fa;box-shadow:0 0 0 3px rgba(96,165,250,.4)}
     .fname{font-size:.75rem;font-weight:800;text-shadow:0 1px 1px #000}.fpos{font-size:.68rem}
     /* Goals scored, shown right on the shirt so the field view alone answers
        "who scored" without a separate table. */
@@ -198,7 +201,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v38 FRESHSTART</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v39 SWAP</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -512,7 +515,7 @@
       availability:Object.fromEntries(roster.map(p=>[p,"available"])),
       snackPlayer:"",
       goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null}, kickoffLineup:null,
-      selectedBench:null, elapsed:0, quarter:0, running:false, ended:false,
+      selectedBench:null, selectedField:null, elapsed:0, quarter:0, running:false, ended:false,
       awaitingQuarterTransition:false, planBuilt:false,
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
       posPlay:Object.fromEntries(roster.map(p=>[p,{GK:0,LB:0,RB:0,M:0,F:0}])),
@@ -540,7 +543,7 @@
    * whether it's locally authoritative depends on who owns the timer, not
    * simply "never synced".)
    */
-  const LOCAL_ONLY_FIELDS=["shareCode","shareRole","selectedBench"];
+  const LOCAL_ONLY_FIELDS=["shareCode","shareRole","selectedBench","selectedField"];
   function mergeRemoteState(remote){
     const local={};
     LOCAL_ONLY_FIELDS.forEach(k=>{local[k]=state[k]});
@@ -1969,7 +1972,18 @@
       const badge=goals>0?'<div class="goal-badge">'+goals+'</div>':'';
       const minBadge=p?'<div class="min-badge">'+minfmt(state.play[p])+'m</div>':'';
       el.innerHTML=badge+minBadge+'<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+'</div>';
-      el.onclick=()=>{if(!canEdit()||state.ended){return}if(state.selectedBench)makeManualSub(state.selectedBench,slot)};
+      el.classList.toggle("selected",state.selectedField===slot);
+      el.onclick=()=>{
+        if(!canEdit()||state.ended){return}
+        if(state.selectedBench){makeManualSub(state.selectedBench,slot);return}
+        if(state.selectedField===slot){state.selectedField=null;renderGame();return}
+        if(state.selectedField){
+          if(p) swapFieldPositions(state.selectedField,slot);
+          else{state.selectedField=null;renderGame()}
+          return;
+        }
+        if(p){state.selectedField=slot;renderGame()}
+      };
     });
     renderBench();renderStatusPlayers();renderMinutes();renderGoals();renderSubSuggestion();
   }
@@ -1989,7 +2003,7 @@
         b.className="bench-btn"+(state.selectedBench===p?" selected":"");
         const waiting=covered[p] ? " <span class='pill'>waiting on "+short(covered[p])+"</span>" : "";
         b.innerHTML='<span>'+p+waiting+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
-        b.disabled=!canEdit();b.onclick=()=>{if(!guardEdit())return;state.selectedBench=state.selectedBench===p?null:p;renderBench()};
+        b.disabled=!canEdit();b.onclick=()=>{if(!guardEdit())return;state.selectedBench=state.selectedBench===p?null:p;state.selectedField=null;renderGame()};
         box.append(b);
       });
     });
@@ -2053,6 +2067,7 @@
         settleClock();          // bank her minutes up to this instant first
         state.lineup[slot]=null;
         vacatedSlot=slot;
+        if(state.selectedField===slot) state.selectedField=null;
       }
       if(state.selectedBench===p) state.selectedBench=null;
     }
@@ -2116,7 +2131,7 @@
 
     pushUndo("choose replacement");
     state.lineup[slot]=incoming;
-    state.selectedBench=null;
+    state.selectedBench=null;state.selectedField=null;
     // The suggestion the coach was looking at (if any) was computed before
     // this slot was filled, so it may still list the just-placed player as
     // a free bench candidate. Every other lineup change clears this for the
@@ -2155,7 +2170,7 @@
 
     const outgoing=state.lineup[slot];
     state.lineup[slot]=incoming;
-    state.selectedBench=null;
+    state.selectedBench=null;state.selectedField=null;
     state.suggestedSub=null;
 
     // If the goalkeeper changes during the period, update only THIS quarter's
@@ -2170,6 +2185,41 @@
       incoming+" IN for "+outgoing+(slot==="GK"?" at GK":""));
     renderAll();
     setStatus(incoming+" in for "+outgoing+(slot==="GK"?" in goal.":"."));
+  }
+
+  /**
+   * Two players already on the field (either one may be the goalie) trade
+   * positions directly — tap one, then tap the other, no bench involved.
+   * Both minutes totals (state.play) are untouched either way since both
+   * players stay on the field the whole time; only which position each of
+   * them is credited for (state.posPlay, and state.gk if GK is one of the
+   * two slots) changes from this instant on.
+   */
+  function swapFieldPositions(slotA,slotB){
+    if(!guardEdit())return;
+    if(!slots.includes(slotA)||!slots.includes(slotB)||slotA===slotB)return;
+    const pA=state.lineup[slotA], pB=state.lineup[slotB];
+    if(!pA||!pB)return;
+
+    const wasRunning=settleClock();
+    pushUndo("swap positions");
+
+    state.lineup[slotA]=pB;
+    state.lineup[slotB]=pA;
+    state.selectedField=null;
+    state.suggestedSub=null;
+
+    // A swap touching goalie moves this quarter's planned keeper the same
+    // way a manual sub into goal already does - the plan should reflect
+    // who's actually standing in goal right now.
+    if(slotA==="GK") state.goaliePlan[state.quarter]=pB;
+    if(slotB==="GK") state.goaliePlan[state.quarter]=pA;
+
+    setLastSub(pA+" ↔ "+pB+" swapped positions");
+    actionSave(wasRunning ? ["lineup","clock","stats","setup"] : ["lineup","setup"]);
+    addAudit("Position swap",pA+" ↔ "+pB);
+    renderAll();
+    setStatus(pA+" and "+pB+" swapped positions.");
   }
 
   function suggestSub(force=false){
@@ -2547,7 +2597,7 @@
         state.awaitingQuarterTransition=false;
         state.subDone[state.quarter]=false;
         state.suggestedSub=null;
-        state.selectedBench=null;
+        state.selectedBench=null;state.selectedField=null;
         state.nextSubAt=state.quarter*QLEN+SUBINT;
         if(Object.values(preview).filter(Boolean).length===5){
           state.lineup={GK:preview.GK,LB:preview.LB,RB:preview.RB,M:preview.M,F:preview.F};
@@ -2647,7 +2697,7 @@
     state.nextSubAt=state.quarter*QLEN+SUBINT;
     state.subDone[state.quarter]=false;
     state.suggestedSub=null;
-    state.selectedBench=null;
+    state.selectedBench=null;state.selectedField=null;
 
     state.lineup={
       GK:preview.GK,
@@ -2706,7 +2756,7 @@
     state.awaitingQuarterTransition=false;
     state.subDone[state.quarter]=false;
     state.suggestedSub=null;
-    state.selectedBench=null;
+    state.selectedBench=null;state.selectedField=null;
     state.nextSubAt=state.quarter*QLEN+SUBINT;
 
     state.lineup={

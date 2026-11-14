@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v38 FRESHSTART
+# Team 71 Game Manager — v39 SWAP
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,9 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v38:** see [`V38_FRESHSTART.md`](V38_FRESHSTART.md)
-- **Earlier changes:** [`V37_PRINTDARK.md`](V37_PRINTDARK.md),
+- **What changed in v39:** see [`V39_SWAP.md`](V39_SWAP.md)
+- **Earlier changes:** [`V38_FRESHSTART.md`](V38_FRESHSTART.md),
+  [`V37_PRINTDARK.md`](V37_PRINTDARK.md),
   [`V36_FIELDBAR.md`](V36_FIELDBAR.md),
   [`V35_FIELDHUD.md`](V35_FIELDHUD.md),
   [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md),
@@ -26,10 +27,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v38 FRESHSTART
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v39 SWAP
 ```
 
-Worth a glance before every game. If it does not say `v38 FRESHSTART`, the deploy
+Worth a glance before every game. If it does not say `v39 SWAP`, the deploy
 did not land and you are running older code.
 
 ---
@@ -137,6 +138,9 @@ did not land and you are running older code.
   yanked straight back out. A manual sub always overrides this.
 - To sub by hand: tap a sideline player, then tap any field position, including
   goalie. Substitutions never move the game clock.
+- To swap two players who are already on the field (goalie included), tap
+  one — she's highlighted — then tap the other. No bench involved. Tap the
+  same player again, or a bench player, to cancel the swap instead.
 - **End Period / Set Up Next Quarter** deliberately ends the period, moves the
   clock to the quarter boundary, applies the next quarter's lineup, and waits for
   you to press Start. This is the one button that does move the clock.
@@ -175,7 +179,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                151 tests — see below
+test/                157 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -200,7 +204,7 @@ npm install
 npm test
 ```
 
-151 tests, about 20 seconds, no network or Cloudflare account required.
+157 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game
