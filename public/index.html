@@ -522,6 +522,27 @@
     };
   }
   function $(id){return document.getElementById(id)}
+  /**
+   * Fields that belong to this phone alone and must never be lost when a
+   * remote snapshot replaces state wholesale (cloudPull, a plan commit).
+   * This is the one list to update when a new per-phone UI field is added —
+   * forgetting one here is exactly the bug that silently un-selected a
+   * bench pick mid-tap: selectedBench was declared a *synced* field, the tap
+   * that set it never actually pushed it, so the very next routine poll
+   * pulled the server's stale value and wiped it. A hand-rolled "preserve
+   * list" at each call site means every call site can independently forget
+   * a field; one declared list plus one merge function means there's only
+   * one place to get it right. (A phone's owned running clock is a
+   * different, *conditional* case — see cloudPull's own localClock — since
+   * whether it's locally authoritative depends on who owns the timer, not
+   * simply "never synced".)
+   */
+  const LOCAL_ONLY_FIELDS=["shareCode","shareRole","selectedBench"];
+  function mergeRemoteState(remote){
+    const local={};
+    LOCAL_ONLY_FIELDS.forEach(k=>{local[k]=state[k]});
+    return {...fresh(),...remote,...local};
+  }
   function loadJSON(k,d){try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}}
   function save(){localStorage.setItem(KEY,JSON.stringify(state))}
   function load(){
@@ -1135,12 +1156,6 @@
       const remote=await r.json();
       if((remote.syncVersion||0) > (state.syncVersion||0)){
         applyingRemote=true;
-        // Which bench player you've tapped is this phone's own in-progress
-        // intent, never pushed to the server (and no longer even a synced
-        // field) - it must survive a remote snapshot the same way the local
-        // clock does below, or a routine 2-second poll wipes out a selection
-        // mid-tap before you can pick the position she's subbing into.
-        const localShare={shareCode:state.shareCode,shareRole:state.shareRole,selectedBench:state.selectedBench};
         const ownsTimer=state.running && state.timerOwnerId===CLIENT_ID && remote.timerOwnerId===CLIENT_ID;
         const localClock=ownsTimer ? {
           elapsed:state.elapsed, play:state.play, gk:state.gk, posPlay:state.posPlay,
@@ -1149,7 +1164,7 @@
           clockAnchorElapsed:state.clockAnchorElapsed,
           awaitingQuarterTransition:state.awaitingQuarterTransition
         } : null;
-        state={...fresh(),...remote,...localShare};
+        state=mergeRemoteState(remote);
         if(!goalieDraft || state.planBuilt) goalieDraft=[...(state.goaliePlan||["","","",""])];
         // This phone's own running clock is authoritative for this phone; a
         // remote snapshot must not drag it backwards.
@@ -1758,8 +1773,7 @@
       if(!r.ok) throw new Error("plan commit failed");
       const canonical=await r.json();
 
-      const localShare={shareCode:state.shareCode,shareRole:state.shareRole};
-      state={...fresh(),...canonical,...localShare};
+      state=mergeRemoteState(canonical);
       goalieDraft=[...(state.goaliePlan||["","","",""])];
       save();
       setSyncStatus("live","Shared • plan synced");
