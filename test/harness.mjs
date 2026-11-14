@@ -23,6 +23,7 @@ const ROSTER = [
   "Juliette Maglio", "Luna Scrivano", "Serafina Sinagra", "Aria Stagnitta"
 ];
 const STATE_KEY = "team71-v5-current";
+const SCHEDULE_KEY = "team71-v5-schedule";
 
 export const roster = ROSTER;
 
@@ -36,6 +37,7 @@ export async function openApp({
   now = 1780000000000,
   seedState = null,
   seedHistory = null,
+  seedSchedule = null,
   html = APP_HTML
 } = {}) {
   const HTML = fs.readFileSync(html, "utf8");
@@ -94,6 +96,7 @@ export async function openApp({
 
       if (seedState) win.localStorage.setItem(STATE_KEY, JSON.stringify(seedState));
       if (seedHistory) win.localStorage.setItem("team71-v5-history", JSON.stringify(seedHistory));
+      if (seedSchedule) win.localStorage.setItem(SCHEDULE_KEY, JSON.stringify(seedSchedule));
     }
   });
 
@@ -146,6 +149,15 @@ export async function openApp({
     async click(id) { $(id).click(); await flush(); },
 
     async setHidden(v) { win.__setHidden(v); await flush(); },
+
+    /** Simulate picking a file in a file <input> (File/FileReader both work fine in jsdom). */
+    async uploadFile(inputId, filename, content, type = "application/json") {
+      const input = $(inputId);
+      const file = new win.File([content], filename, { type });
+      Object.defineProperty(input, "files", { value: [file], configurable: true });
+      fire(input, "change");
+      await flush();
+    },
 
     /** Pregame: choose the goalie for a quarter (0-indexed). */
     async setGoalie(q, name) {
@@ -261,6 +273,18 @@ export async function openApp({
       await flush();
     },
 
+    /** Tap one field position, for a field-to-field swap (its own click, no bench involved). */
+    async tapField(slot) {
+      $({ GK: "posGK", LB: "posLB", RB: "posRB", M: "posM", F: "posF" }[slot]).click();
+      await flush();
+    },
+
+    /** Tap one field position, then another, to swap the two players' positions. */
+    async swapField(slotA, slotB) {
+      await this.tapField(slotA);
+      await this.tapField(slotB);
+    },
+
     async scoreGoal(name) {
       const short = name.split(" ")[0];
       const btn = [...doc.querySelectorAll("#goalScorers button")]
@@ -279,6 +303,7 @@ export async function openApp({
     },
 
     history: () => JSON.parse(win.localStorage.getItem("team71-v5-history") || "[]"),
+    schedule: () => JSON.parse(win.localStorage.getItem(SCHEDULE_KEY) || "null"),
 
     close() { dom.window.close(); }
   };

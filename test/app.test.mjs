@@ -79,6 +79,24 @@ test("if the snack player is unavailable, Q4 falls back to normal fairness", asy
   app.close();
 });
 
+test("v41: a higher-rated player is preferred for an unassigned goalie quarter on a pure tie", async () => {
+  // Every player starts at 0 season goalie-quarters and 0 minutes, so Q1 is
+  // a pure tie without a rating — same situation as the starting-five tie
+  // test above, just for the goalie plan instead.
+  const withoutRating = await openApp();
+  await withoutRating.click("buildPlanBtn");
+  assert.equal(withoutRating.state().goaliePlan[0], "Shalom Amaya",
+    "sanity check: on a plain tie, roster order picks the keeper");
+  withoutRating.close();
+
+  const app = await openApp();
+  await app.setSkill("Olivia Carpenter", 5);
+  await app.click("buildPlanBtn");
+  assert.equal(app.state().goaliePlan[0], "Olivia Carpenter",
+    "a higher-rated player on an otherwise pure tie is preferred in goal");
+  app.close();
+});
+
 test("picking a scheduled game fills in opponent, jersey, and snack together", async () => {
   const app = await openApp();
   await app.setScheduleGame("2026-09-19"); // at Team 75, Away, snack Aria Stagnitta
@@ -86,6 +104,153 @@ test("picking a scheduled game fills in opponent, jersey, and snack together", a
   assert.equal(s.opponent, "Team 75");
   assert.equal(s.homeAway, "away");
   assert.equal(s.snackPlayer, "Aria Stagnitta");
+  app.close();
+});
+
+/* ===================================================== editing the schedule */
+
+test("the schedule editor opens with one row per game, pre-filled", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  assert.equal(app.$("scheduleEditModal").classList.contains("show"), true);
+  const rows = app.doc.querySelectorAll("#scheduleRows .card");
+  assert.equal(rows.length, 8, "the default schedule has 8 games");
+  const firstOpponent = rows[0].querySelector("[data-f='opponent']");
+  assert.equal(firstOpponent.value, "Team 72");
+  app.close();
+});
+
+test("editing a game and saving updates the real schedule, and the dropdown reflects it", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  const row = app.doc.querySelectorAll("#scheduleRows .card")[0];
+  const opponentInput = row.querySelector("[data-f='opponent']");
+  opponentInput.value = "Team 99";
+  opponentInput.dispatchEvent(new app.win.Event("change", { bubbles: true }));
+  await app.flush();
+
+  await app.click("saveScheduleBtn");
+  assert.equal(app.$("scheduleEditModal").classList.contains("show"), false, "closes after saving");
+
+  const saved = app.schedule();
+  assert.ok(saved.some((g) => g.date === "2026-09-12" && g.opponent === "Team 99"));
+
+  await app.setScheduleGame("2026-09-12");
+  assert.equal(app.state().opponent, "Team 99", "the edited opponent is what gets applied from the dropdown now");
+  app.close();
+});
+
+test("closing the editor without saving discards the edit", async () => {
+  const app = await openApp();
+  const before = app.schedule();
+  await app.click("editScheduleBtn");
+  const row = app.doc.querySelectorAll("#scheduleRows .card")[0];
+  const opponentInput = row.querySelector("[data-f='opponent']");
+  opponentInput.value = "Team 99";
+  opponentInput.dispatchEvent(new app.win.Event("change", { bubbles: true }));
+  await app.flush();
+
+  await app.click("closeScheduleEditBtn");
+  assert.deepEqual(app.schedule(), before, "nothing changed — the edit was only ever in the draft");
+  app.close();
+});
+
+test("adding a game and saving grows the schedule", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  await app.click("addScheduleRowBtn");
+
+  const rows = app.doc.querySelectorAll("#scheduleRows .card");
+  const newRow = rows[rows.length - 1];
+  const setField = (f, v) => {
+    const el = newRow.querySelector("[data-f='" + f + "']");
+    el.value = v;
+    el.dispatchEvent(new app.win.Event("change", { bubbles: true }));
+  };
+  setField("date", "2026-12-05");
+  setField("time", "10:00");
+  setField("opponent", "Team 80");
+  setField("homeAway", "home");
+  await app.flush();
+
+  await app.click("saveScheduleBtn");
+  const saved = app.schedule();
+  assert.equal(saved.length, 9);
+  assert.ok(saved.some((g) => g.date === "2026-12-05" && g.opponent === "Team 80"));
+  app.close();
+});
+
+test("removing a game and saving shrinks the schedule", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  const removeBtn = app.doc.querySelector("#scheduleRows .card [data-remove]");
+  removeBtn.click();
+  await app.flush();
+
+  await app.click("saveScheduleBtn");
+  const saved = app.schedule();
+  assert.equal(saved.length, 7);
+  assert.ok(!saved.some((g) => g.date === "2026-09-12"), "the first game is gone");
+  app.close();
+});
+
+test("a row with no date is dropped on save, instead of being kept as a blank game", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  await app.click("addScheduleRowBtn"); // never filled in
+  await app.click("saveScheduleBtn");
+  assert.equal(app.schedule().length, 8, "the blank row never made it in");
+  app.close();
+});
+
+test("Download Current Schedule produces a JSON file of the current schedule", async () => {
+  const app = await openApp();
+  let downloadedName = null, downloadedBlobParts = null;
+  const originalClick = app.win.HTMLAnchorElement.prototype.click;
+  app.win.HTMLAnchorElement.prototype.click = function () { downloadedName = this.download; };
+  const originalCreateObjectURL = app.win.URL.createObjectURL;
+  app.win.URL.createObjectURL = (blob) => { downloadedBlobParts = blob; return originalCreateObjectURL(blob); };
+
+  await app.click("downloadScheduleFileBtn");
+
+  assert.match(downloadedName, /schedule.*\.json$/);
+  assert.ok(downloadedBlobParts, "a file was actually built");
+  app.win.HTMLAnchorElement.prototype.click = originalClick;
+  app.close();
+});
+
+test("REGRESSION: loading a schedule file replaces the draft for review, not the live schedule directly", async () => {
+  const app = await openApp();
+  const before = app.schedule();
+
+  await app.click("editScheduleBtn");
+  const fileSchedule = [
+    { date: "2027-01-10", time: "11:00", opponent: "Team 50", homeAway: "home", snack: "Shalom Amaya" }
+  ];
+  await app.uploadFile("scheduleFileInput", "schedule.json", JSON.stringify(fileSchedule));
+
+  // Not committed yet — still just the draft on screen.
+  assert.deepEqual(app.schedule(), before, "the live schedule is untouched until Save");
+  const rows = app.doc.querySelectorAll("#scheduleRows .card");
+  assert.equal(rows.length, 1, "the editor now shows exactly what the file contained");
+  assert.equal(rows[0].querySelector("[data-f='opponent']").value, "Team 50");
+
+  await app.click("saveScheduleBtn");
+  const saved = app.schedule();
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].opponent, "Team 50");
+  app.close();
+});
+
+test("a schedule saved from a previous visit is still there the next time the app opens", async () => {
+  const seedSchedule = [
+    { date: "2027-02-01", time: "09:00", opponent: "Team 61", homeAway: "away", snack: "" }
+  ];
+  const app = await openApp({ seedSchedule });
+  await app.click("editScheduleBtn");
+  const rows = app.doc.querySelectorAll("#scheduleRows .card");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].querySelector("[data-f='opponent']").value, "Team 61");
   app.close();
 });
 
@@ -381,6 +546,89 @@ test("a manual substitution never moves the game clock", async () => {
   app.close();
 });
 
+/* ====================================================== field-to-field swap */
+
+test("tapping one on-field player selects her for a swap", async () => {
+  const app = await readyGame();
+  await app.tapField("LB");
+  assert.equal(app.state().selectedField, "LB");
+  assert.ok(app.$("posLB").classList.contains("selected"));
+  app.close();
+});
+
+test("tapping the same selected player again deselects her", async () => {
+  const app = await readyGame();
+  await app.tapField("LB");
+  await app.tapField("LB");
+  assert.equal(app.state().selectedField, null);
+  assert.ok(!app.$("posLB").classList.contains("selected"));
+  app.close();
+});
+
+test("tapping a second on-field player swaps the two positions", async () => {
+  const app = await readyGame();
+  await app.click("startPauseBtn");
+  await run(app, 90);
+  const before = app.state();
+  const atLB = before.lineup.LB, atRB = before.lineup.RB;
+
+  await app.swapField("LB", "RB");
+  const after = app.state();
+
+  assert.equal(after.lineup.LB, atRB, "RB's player is now at LB");
+  assert.equal(after.lineup.RB, atLB, "LB's player is now at RB");
+  assert.equal(after.selectedField, null, "selection clears once the swap completes");
+  assert.equal(Math.round(after.elapsed), 90, "a swap never moves the game clock");
+  assert.equal(Math.round(after.play[atLB]), 90, "total playing time is untouched by a swap — she was on the field the whole time either way");
+  assert.equal(Math.round(after.play[atRB]), 90);
+  assert.match(app.$("lastSubBanner").textContent, new RegExp(atLB + ".*↔.*" + atRB));
+  app.close();
+});
+
+test("swapping the goalie into an outfield spot updates this quarter's goalie plan", async () => {
+  const app = await readyGame();
+  const gk = app.state().lineup.GK, lb = app.state().lineup.LB;
+
+  await app.swapField("GK", "LB");
+  const s = app.state();
+
+  assert.equal(s.lineup.GK, lb, "LB's player is now in goal");
+  assert.equal(s.lineup.LB, gk, "the old goalie is now at LB");
+  assert.equal(s.goaliePlan[0], lb, "Q1's planned goalie reflects who is actually in goal now");
+  app.close();
+});
+
+test("tapping an empty field position while one is selected cancels the selection instead of swapping", async () => {
+  const app = await readyGame();
+  const victim = app.state().lineup.RB;
+  await app.setAvailPregame(victim, "out");   // vacates RB, leaving it genuinely empty
+  await app.dismissReplacement();             // leave it empty for now rather than auto-filling it
+
+  const atLB = app.state().lineup.LB;
+  await app.tapField("LB");
+  assert.equal(app.state().selectedField, "LB");
+
+  await app.tapField("RB");
+  assert.equal(app.state().selectedField, null, "tapping the empty slot cancels the selection");
+  assert.equal(app.state().lineup.LB, atLB, "nothing was swapped into the empty slot");
+  assert.equal(app.state().lineup.RB, null);
+  app.close();
+});
+
+test("selecting a bench player for a sub cancels an in-progress field-swap selection, and vice versa", async () => {
+  const app = await readyGame();
+  await app.tapField("LB");
+  assert.equal(app.state().selectedField, "LB");
+
+  await app.selectBench("Aria Stagnitta");
+  assert.equal(app.state().selectedField, null, "field selection cleared once a bench pick starts");
+  assert.equal(app.state().selectedBench, "Aria Stagnitta");
+
+  await app.tapField("RB");
+  assert.equal(app.state().selectedBench, null, "bench selection cleared once a field-swap pick starts");
+  app.close();
+});
+
 test("REGRESSION: a substitution leaves a persistent \"last sub\" banner, so a name change is never a silent surprise", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
@@ -513,6 +761,80 @@ test("REGRESSION: pressing Sub In Whole Bench again after the rotation is done a
   await run(app, 1);
   await app.click("acceptSubBtn");
   assert.notDeepEqual(app.state().lineup, afterFirst, "confirming still allows a deliberate second swap");
+  app.close();
+});
+
+test("v41: a lower-rated field player is benched first when minutes are tied", async () => {
+  const app = await openApp();
+  await app.setGoalie(0, "Shalom Amaya");
+  await app.setLineupSlot("LB", "Olivia Carpenter");
+  await app.setLineupSlot("RB", "Norah Dineen");
+  await app.setLineupSlot("M", "Kennedy Kozlosky");
+  await app.setLineupSlot("F", "Juliette Maglio");
+  await app.setSkill("Olivia Carpenter", 1);
+  await app.setSkill("Norah Dineen", 5);
+  await app.click("buildPlanBtn");
+  await app.click("startPauseBtn");
+  await run(app, 400);                     // past 6:00; every field player still has equal minutes
+
+  const s = app.state();
+  assert.ok(s.suggestedSub.outgoingPlayers.includes("Olivia Carpenter"),
+    "the lower-rated player sits on a pure minutes tie");
+  assert.ok(!s.suggestedSub.outgoingPlayers.includes("Norah Dineen"),
+    "the higher-rated player is kept on over an equal-minutes, lower-rated teammate");
+  app.close();
+});
+
+test("v41: a bench player who just sat out is prioritized next time, not left out twice in a row", async () => {
+  // Engineered scenario: this app's fixed 8-player roster always swaps the
+  // whole bench on under ordinary play (bench.length never exceeds the open
+  // field slots), so "someone sits twice in a row" can't occur through normal
+  // gameplay. Seeding two slots empty (GK and F) while everyone is present
+  // shrinks the open field slots below the bench size, the same way a bigger
+  // roster or more simultaneous emergencies would in a real game.
+  const present = Object.fromEntries(roster.map((p) => [p, true]));
+  const availability = Object.fromEntries(roster.map((p) => [p, "available"]));
+  const play = Object.fromEntries(roster.map((p) => [p, 0]));
+  const gk = Object.fromEntries(roster.map((p) => [p, 0]));
+  const goals = Object.fromEntries(roster.map((p) => [p, 0]));
+  const benchStreak = Object.fromEntries(roster.map((p) => [p, 0]));
+  benchStreak["Aria Stagnitta"] = 5;           // already sat out several rotations running
+
+  const seedState = {
+    gameId: "g_test", opponent: "Team 72", homeAway: "home",
+    present, availability, gkPref: {},
+    goaliePlan: ["", "", "", ""],
+    lineup: { GK: null, LB: "Shalom Amaya", RB: "Olivia Carpenter", M: "Norah Dineen", F: null },
+    elapsed: 0, quarter: 0, running: false, ended: false,
+    play, gk, goals, ourScore: 0, theirScore: 0, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 0, testSpeed: 1, timerOwnerId: "",
+    benchStreak,
+  };
+  const app = await openApp({ seedState });
+
+  // Bench (5): Kennedy Kozlosky, Juliette Maglio, Luna Scrivano, Serafina
+  // Sinagra, Aria Stagnitta. Open field slots (3): LB, RB, M (F is empty).
+  let s = app.state();
+  assert.equal(s.suggestedSub.incoming.length, 3, "only 3 of the 5 bench players can come in");
+  assert.ok(s.suggestedSub.incoming.includes("Aria Stagnitta"),
+    "her existing streak puts her first in line");
+
+  await app.click("acceptSubBtn");
+  s = app.state();
+  assert.equal(s.benchStreak["Aria Stagnitta"], 0, "she came on, so her streak resets");
+  const leftOutFirstRound = ["Kennedy Kozlosky", "Juliette Maglio", "Luna Scrivano", "Serafina Sinagra"]
+    .filter((p) => !app.onField().includes(p));
+  assert.equal(leftOutFirstRound.length, 2, "two of the four non-Aria bench players sat out this round");
+  for (const p of leftOutFirstRound) assert.equal(s.benchStreak[p], 1, "sitting out bumps the streak");
+
+  // Next rotation: whoever just sat out should be first in line this time,
+  // not passed over again in favor of players who were already on the field.
+  await run(app, 1);     // clear the rapid-repeat guard, same beat as a real second press
+  await app.click("acceptSubBtn");
+  s = app.state();
+  for (const p of leftOutFirstRound) {
+    assert.ok(app.onField().includes(p), p + " should not sit out twice in a row when avoidable");
+  }
   app.close();
 });
 
@@ -748,6 +1070,15 @@ test("a planned goalie who becomes unavailable is replaced in the future plan on
   assert.notEqual(s.goaliePlan[3], "Luna Scrivano");
   assert.ok(s.goaliePlan[3], "a replacement should be chosen");
   assert.equal(s.goaliePlan[0], "Olivia Carpenter", "Q1 is in the past, leave it recorded");
+  app.close();
+});
+
+test("v41: an emergency goalie replacement also prefers a higher-rated player on a tie", async () => {
+  const app = await readyGame();     // Q1 goalie is Olivia Carpenter
+  await app.setSkill("Norah Dineen", 5);
+  await app.setAvailPregame("Olivia Carpenter", "out");
+  assert.equal(app.state().goaliePlan[0], "Norah Dineen",
+    "a higher-rated player is preferred over plain roster order on a pure gk-minutes tie");
   app.close();
 });
 
@@ -1149,6 +1480,97 @@ test("reopening moments after a reload keeps the clock running", async () => {
   };
   const app = await openApp({ seedState });
   assert.equal(app.state().running, true);
+  app.close();
+});
+
+/* ===================================================== auto-close stale games */
+
+test("REGRESSION: a game left over from more than a day ago is closed out and reset automatically", async () => {
+  const now = 1780000000000;
+  const staleTs = now - 2 * 24 * 60 * 60 * 1000;
+  const seedState = {
+    gameId: "g_" + staleTs.toString(36) + "_stale1", opponent: "Team 72", homeAway: "home",
+    present: {}, availability: {},
+    goaliePlan: ["Olivia Carpenter", "Serafina Sinagra", "Norah Dineen", "Luna Scrivano"],
+    lineup: { GK: "Olivia Carpenter", LB: "Shalom Amaya", RB: "Kennedy Kozlosky", M: "Juliette Maglio", F: "Aria Stagnitta" },
+    planBuilt: true, elapsed: 400, quarter: 1, running: false, ended: false,
+    play: {}, gk: {}, posPlay: {}, goals: {}, ourScore: 2, theirScore: 1, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 400, testSpeed: 1, timerOwnerId: "",
+    shareCode: "", syncVersion: 0
+  };
+  const app = await openApp({ now, seedState });
+  const s = app.state();
+  assert.notEqual(s.gameId, seedState.gameId, "a fresh game id was generated");
+  assert.equal(s.planBuilt, false, "fully reset, not just left sitting there as last week's game");
+  assert.equal(s.elapsed, 0);
+  const hist = app.history();
+  assert.ok(hist.some((g) => g.id === seedState.gameId && g.ourScore === 2 && g.theirScore === 1),
+    "the stale game's real progress reached season history, same as End Game would have saved it");
+  assert.match(app.text("status"), /more than a day ago/);
+  app.close();
+});
+
+test("a stale game with no real progress is reset silently, without adding a blank entry to history", async () => {
+  const now = 1780000000000;
+  const staleTs = now - 2 * 24 * 60 * 60 * 1000;
+  const seedState = {
+    gameId: "g_" + staleTs.toString(36) + "_stale2", opponent: "Team 72", homeAway: "home",
+    present: {}, availability: {},
+    goaliePlan: ["", "", "", ""], lineup: { GK: null, LB: null, RB: null, M: null, F: null },
+    planBuilt: false, elapsed: 0, quarter: 0, running: false, ended: false,
+    play: {}, gk: {}, posPlay: {}, goals: {}, ourScore: 0, theirScore: 0, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 0, testSpeed: 1, timerOwnerId: "",
+    shareCode: "", syncVersion: 0
+  };
+  const app = await openApp({ now, seedState });
+  const s = app.state();
+  assert.notEqual(s.gameId, seedState.gameId);
+  assert.equal(app.history().some((g) => g.id === seedState.gameId), false, "nothing worth saving, so nothing was added");
+  app.close();
+});
+
+test("a stale game already properly ended is reset without re-saving a duplicate history entry", async () => {
+  const now = 1780000000000;
+  const staleTs = now - 2 * 24 * 60 * 60 * 1000;
+  const oldId = "g_" + staleTs.toString(36) + "_stale3";
+  const seedState = {
+    gameId: oldId, opponent: "Team 72", homeAway: "home",
+    present: {}, availability: {},
+    goaliePlan: ["Olivia Carpenter", "", "", ""], lineup: { GK: "Olivia Carpenter", LB: null, RB: null, M: null, F: null },
+    planBuilt: true, elapsed: 2880, quarter: 3, running: false, ended: true,
+    play: {}, gk: {}, posPlay: {}, goals: {}, ourScore: 3, theirScore: 0, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 2880, testSpeed: 1, timerOwnerId: "",
+    shareCode: "", syncVersion: 0
+  };
+  const seedHistory = [{
+    id: oldId, date: new Date(now).toISOString(), opponent: "Team 72", homeAway: "home",
+    ourScore: 3, theirScore: 0, play: {}, posPlay: {}, gkQuarters: {}, goals: {}, goalLog: []
+  }];
+  const app = await openApp({ now, seedState, seedHistory });
+  const s = app.state();
+  assert.notEqual(s.gameId, oldId, "still gets a clean slate for the next game");
+  const matches = app.history().filter((g) => g.id === oldId);
+  assert.equal(matches.length, 1, "already saved once — must not be duplicated by the auto-close check");
+  app.close();
+});
+
+test("a game from earlier today is left exactly as it was — only a day-plus triggers the reset", async () => {
+  const now = 1780000000000;
+  const recentTs = now - 2 * 60 * 60 * 1000; // two hours ago
+  const seedState = {
+    gameId: "g_" + recentTs.toString(36) + "_recent", opponent: "Team 75", homeAway: "away",
+    present: {}, availability: {},
+    goaliePlan: ["Olivia Carpenter", "", "", ""], lineup: { GK: "Olivia Carpenter", LB: null, RB: null, M: null, F: null },
+    planBuilt: true, elapsed: 120, quarter: 0, running: false, ended: false,
+    play: {}, gk: {}, posPlay: {}, goals: {}, ourScore: 0, theirScore: 0, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 120, testSpeed: 1, timerOwnerId: "",
+    shareCode: "", syncVersion: 0
+  };
+  const app = await openApp({ now, seedState });
+  const s = app.state();
+  assert.equal(s.gameId, seedState.gameId, "untouched — not stale enough yet");
+  assert.equal(s.opponent, "Team 75");
+  assert.equal(s.elapsed, 120);
   app.close();
 });
 
@@ -1705,8 +2127,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v37 so the deployed build is identifiable", async () => {
+test("the version banner says v41 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v37 PRINTDARK/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v41 FAIRSHARE/);
   app.close();
 });

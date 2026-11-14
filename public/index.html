@@ -89,6 +89,9 @@
     .fp{position:absolute;transform:translate(-50%,-50%);width:100px;min-height:44px;text-align:center;cursor:pointer}
     .shirt{width:54px;height:42px;margin:0 auto 5px;border-radius:8px 8px 10px 10px;border:2px solid rgba(0,0,0,.3);box-shadow:0 2px 5px rgba(0,0,0,.25)}
     .shirt.home{background:var(--home)}.shirt.away{background:var(--away)}.shirt.gk{background:#30343b}
+    /* Picked up for a field-to-field swap — tap this player, then tap
+       another, to trade positions without going through the bench. */
+    .fp.selected .shirt{outline:3px solid #60a5fa;box-shadow:0 0 0 3px rgba(96,165,250,.4)}
     .fname{font-size:.75rem;font-weight:800;text-shadow:0 1px 1px #000}.fpos{font-size:.68rem}
     /* Goals scored, shown right on the shirt so the field view alone answers
        "who scored" without a separate table. */
@@ -198,7 +201,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v37 PRINTDARK</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v41 FAIRSHARE</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -216,6 +219,7 @@
       <label style="display:block;margin-top:10px">This week's game <span class="muted small">(fills in opponent, jersey, and snack)</span>
         <select id="scheduleGame"><option value="">Choose a scheduled game…</option></select>
       </label>
+      <div class="controls" style="margin-top:6px"><button id="editScheduleBtn" type="button">Edit Season Schedule</button></div>
       <div class="grid2" style="margin-top:10px">
         <label>Opponent<input id="opponent" value="Team 72"></label>
         <label>Jersey / Side<select id="homeAway"><option value="home">Home — Red</option><option value="away">Away — Blue</option></select></label>
@@ -442,22 +446,66 @@
   </div>
 </div>
 
+<div class="modal" id="scheduleEditModal">
+  <div class="modal-card" style="width:min(640px,100%)">
+    <button class="modal-x" id="closeScheduleEditXBtn" aria-label="Close" title="Close">&times;</button>
+    <strong>Season Schedule</strong>
+    <div class="muted small" style="margin-top:4px">Edit any game, add or remove one, or load a whole new schedule from a file. Nothing here takes effect until you tap Save.</div>
+    <div id="scheduleRows" style="margin-top:10px"></div>
+    <div class="controls" style="margin-top:8px"><button id="addScheduleRowBtn" type="button">Add Game</button></div>
+    <div class="controls" style="margin-top:14px">
+      <button id="loadScheduleFileBtn" type="button">Load Schedule File</button>
+      <button id="downloadScheduleFileBtn" type="button">Download Current Schedule</button>
+    </div>
+    <input type="file" id="scheduleFileInput" accept="application/json" style="display:none">
+    <div class="controls" style="margin-top:14px">
+      <button class="primary" id="saveScheduleBtn" type="button">Save</button>
+      <button id="closeScheduleEditBtn" type="button">Close Without Saving</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
   const roster=["Shalom Amaya","Olivia Carpenter","Norah Dineen","Kennedy Kozlosky","Juliette Maglio","Luna Scrivano","Serafina Sinagra","Aria Stagnitta"];
   // The season schedule, from the team's game-day email — one dropdown fills
   // in opponent, jersey/side, and the snack assignment (which also drives
   // the Q4 goalie default) in one pick instead of three.
-  const SEASON_SCHEDULE=[
-    {date:"2026-09-12",label:"Sat Sep 12, 9:00 AM vs Team 72 (Home)",opponent:"Team 72",homeAway:"home",snack:"Serafina Sinagra"},
-    {date:"2026-09-19",label:"Sat Sep 19, 2:00 PM at Team 75 (Away)",opponent:"Team 75",homeAway:"away",snack:"Aria Stagnitta"},
-    {date:"2026-09-26",label:"Sat Sep 26, 2:00 PM vs Team 76 (Home)",opponent:"Team 76",homeAway:"home",snack:"Kennedy Kozlosky"},
-    {date:"2026-10-03",label:"Sat Oct 3, 1:00 PM vs Team 75 (Home)",opponent:"Team 75",homeAway:"home",snack:"Luna Scrivano"},
-    {date:"2026-10-17",label:"Sat Oct 17, 2:00 PM vs Team 72 (Home)",opponent:"Team 72",homeAway:"home",snack:"Olivia Carpenter"},
-    {date:"2026-10-24",label:"Sat Oct 24, 2:00 PM at Team 74 (Away)",opponent:"Team 74",homeAway:"away",snack:"Juliette Maglio"},
-    {date:"2026-11-01",label:"Sun Nov 1, 2:00 PM vs Team 75 (Home)",opponent:"Team 75",homeAway:"home",snack:"Shalom Amaya"},
-    {date:"2026-11-07",label:"Sat Nov 7, 2:00 PM at Team 76 (Away)",opponent:"Team 76",homeAway:"away",snack:"Norah Dineen"}
+  const DEFAULT_SCHEDULE=[
+    {date:"2026-09-12",time:"09:00",opponent:"Team 72",homeAway:"home",snack:"Serafina Sinagra"},
+    {date:"2026-09-19",time:"14:00",opponent:"Team 75",homeAway:"away",snack:"Aria Stagnitta"},
+    {date:"2026-09-26",time:"14:00",opponent:"Team 76",homeAway:"home",snack:"Kennedy Kozlosky"},
+    {date:"2026-10-03",time:"13:00",opponent:"Team 75",homeAway:"home",snack:"Luna Scrivano"},
+    {date:"2026-10-17",time:"14:00",opponent:"Team 72",homeAway:"home",snack:"Olivia Carpenter"},
+    {date:"2026-10-24",time:"14:00",opponent:"Team 74",homeAway:"away",snack:"Juliette Maglio"},
+    {date:"2026-11-01",time:"14:00",opponent:"Team 75",homeAway:"home",snack:"Shalom Amaya"},
+    {date:"2026-11-07",time:"14:00",opponent:"Team 76",homeAway:"away",snack:"Norah Dineen"}
   ];
+  const SCHEDULE_KEY="team71-v5-schedule";
+  // Editable in-app (Edit Season Schedule), or replaced wholesale by
+  // loading a schedule file — so the hardcoded list above is only ever the
+  // starting point for a brand-new install, never the live copy.
+  let seasonSchedule=loadJSON(SCHEDULE_KEY,null)||DEFAULT_SCHEDULE.map(g=>({...g}));
+  let scheduleDraft=[];
+  function saveSchedule(list){
+    seasonSchedule=list;
+    localStorage.setItem(SCHEDULE_KEY,JSON.stringify(seasonSchedule));
+  }
+  /** Date + time + opponent + side, formatted for the dropdown — computed, not stored, so editing a game can never leave a stale label behind. */
+  function formatScheduleLabel(g){
+    const d=new Date((g.date||"")+"T00:00:00");
+    const dateStr=isNaN(d) ? (g.date||"(no date)") : d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+    let timeStr="";
+    if(g.time){
+      const [h,m]=g.time.split(":").map(Number);
+      if(Number.isFinite(h)&&Number.isFinite(m)){
+        const ap=h>=12?"PM":"AM", h12=((h+11)%12)+1;
+        timeStr=", "+h12+":"+String(m).padStart(2,"0")+" "+ap;
+      }
+    }
+    const side=g.homeAway==="away"?"at":"vs";
+    return dateStr+timeStr+" "+side+" "+(g.opponent||"TBD")+" ("+(g.homeAway==="away"?"Away":"Home")+")";
+  }
   const slots=["GK","LB","RB","M","F"];
   const posNames={GK:"Goalie",LB:"Left Back",RB:"Right Back",M:"Support / Mid",F:"Forward"};
   const KEY="team71-v5-current", HIST="team71-v5-history";
@@ -471,6 +519,9 @@
   // are still well inside "instant" for a soccer sideline, and nothing polls
   // at all while the app is in the background.
   const POLL_STATE_MS=2000, POLL_AUDIT_MS=5000, POLL_ACTIVE_MS=10000;
+  // Games run about an hour; nothing legitimate is still "this game" a full
+  // day later. See autoCloseStaleGame() at boot.
+  const STALE_GAME_MS=24*60*60*1000;
 
   // A clock left running while the phone was closed should not silently credit
   // hours of playing time when the app reopens.
@@ -509,10 +560,16 @@
       availability:Object.fromEntries(roster.map(p=>[p,"available"])),
       snackPlayer:"",
       goaliePlan:["","","",""], lineup:{GK:null,LB:null,RB:null,M:null,F:null}, kickoffLineup:null,
-      selectedBench:null, elapsed:0, quarter:0, running:false, ended:false,
+      selectedBench:null, selectedField:null, elapsed:0, quarter:0, running:false, ended:false,
       awaitingQuarterTransition:false, planBuilt:false,
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
       posPlay:Object.fromEntries(roster.map(p=>[p,{GK:0,LB:0,RB:0,M:0,F:0}])),
+      // How many consecutive completed rotations each player has sat out —
+      // not minutes, which already balance out over time, but literally
+      // "did she just sit last time too." Reset to 0 the instant she comes
+      // back on, incremented only when a real rotation decision leaves her
+      // on the bench again. See suggestSub().
+      benchStreak:Object.fromEntries(roster.map(p=>[p,0])),
       skill:Object.fromEntries(roster.map(p=>[p,skillRatings[p]||3])),
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,
@@ -522,6 +579,27 @@
     };
   }
   function $(id){return document.getElementById(id)}
+  /**
+   * Fields that belong to this phone alone and must never be lost when a
+   * remote snapshot replaces state wholesale (cloudPull, a plan commit).
+   * This is the one list to update when a new per-phone UI field is added —
+   * forgetting one here is exactly the bug that silently un-selected a
+   * bench pick mid-tap: selectedBench was declared a *synced* field, the tap
+   * that set it never actually pushed it, so the very next routine poll
+   * pulled the server's stale value and wiped it. A hand-rolled "preserve
+   * list" at each call site means every call site can independently forget
+   * a field; one declared list plus one merge function means there's only
+   * one place to get it right. (A phone's owned running clock is a
+   * different, *conditional* case — see cloudPull's own localClock — since
+   * whether it's locally authoritative depends on who owns the timer, not
+   * simply "never synced".)
+   */
+  const LOCAL_ONLY_FIELDS=["shareCode","shareRole","selectedBench","selectedField"];
+  function mergeRemoteState(remote){
+    const local={};
+    LOCAL_ONLY_FIELDS.forEach(k=>{local[k]=state[k]});
+    return {...fresh(),...remote,...local};
+  }
   function loadJSON(k,d){try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}}
   function save(){localStorage.setItem(KEY,JSON.stringify(state))}
   function load(){
@@ -638,10 +716,13 @@
     return {type:"quarter",at:end,label:q===3?"Game end":"Quarter end / goalie change"};
   }
 
-  async function resetGame(){
-    if(!guardEdit()) return;
-    if(!confirm("Reset the current game to 0:00? Season history will be kept.")) return;
-
+  /**
+   * The actual wipe behind "New Game / Reset" - also reused by the
+   * auto-close-a-stale-game check at boot, so a game left over from last
+   * week gets exactly the same clean slate a manual Reset would give it,
+   * with nothing duplicated between the two paths.
+   */
+  async function hardResetToFresh(){
     const oldCode=state.shareCode;
 
     state.running=false;
@@ -669,9 +750,45 @@
     save();
     renderAll();
     await fetchActiveGame();
-    showTab("setup");
     setSyncStatus("","Local only");
+  }
+
+  async function resetGame(){
+    if(!guardEdit()) return;
+    if(!confirm("Reset the current game to 0:00? Season history will be kept.")) return;
+    await hardResetToFresh();
+    showTab("setup");
     setStatus("New game ready.");
+  }
+
+  /** gameId is "g_<base36 Date.now()>_<random>" — pull the timestamp back out. */
+  function gameStartedAt(gameId){
+    const m=/^g_([0-9a-z]+)_/.exec(gameId||"");
+    const t=m?parseInt(m[1],36):NaN;
+    return Number.isFinite(t)?t:0;
+  }
+
+  /**
+   * Nothing nudges a coach to start a fresh game for a new game day — state
+   * just persists in localStorage forever, so whatever was left over from
+   * last week (mid-game, paused, or simply never reset after End Game) is
+   * exactly what greets them next time, with no reminder that it's stale.
+   * Checked once at boot: a game this old gets closed out for real if it
+   * has progress worth keeping (closeOutGame — same as End Game would do,
+   * so the numbers reach season history even if nobody tapped the button),
+   * then wiped to a clean slate either way (hardResetToFresh — same as New
+   * Game). The coach never has to remember to do either one themselves.
+   */
+  async function autoCloseStaleGame(){
+    const startedAt=gameStartedAt(state.gameId);
+    if(!startedAt || Date.now()-startedAt<=STALE_GAME_MS) return;
+
+    const hasRealProgress=state.planBuilt || state.elapsed>0;
+    if(hasRealProgress && !state.ended){
+      await closeOutGame();
+    }
+    await hardResetToFresh();
+    setStatus("Last game was from more than a day ago — started fresh for today.");
   }
 
 
@@ -1135,12 +1252,6 @@
       const remote=await r.json();
       if((remote.syncVersion||0) > (state.syncVersion||0)){
         applyingRemote=true;
-        // Which bench player you've tapped is this phone's own in-progress
-        // intent, never pushed to the server (and no longer even a synced
-        // field) - it must survive a remote snapshot the same way the local
-        // clock does below, or a routine 2-second poll wipes out a selection
-        // mid-tap before you can pick the position she's subbing into.
-        const localShare={shareCode:state.shareCode,shareRole:state.shareRole,selectedBench:state.selectedBench};
         const ownsTimer=state.running && state.timerOwnerId===CLIENT_ID && remote.timerOwnerId===CLIENT_ID;
         const localClock=ownsTimer ? {
           elapsed:state.elapsed, play:state.play, gk:state.gk, posPlay:state.posPlay,
@@ -1149,7 +1260,7 @@
           clockAnchorElapsed:state.clockAnchorElapsed,
           awaitingQuarterTransition:state.awaitingQuarterTransition
         } : null;
-        state={...fresh(),...remote,...localShare};
+        state=mergeRemoteState(remote);
         if(!goalieDraft || state.planBuilt) goalieDraft=[...(state.goaliePlan||["","","",""])];
         // This phone's own running clock is authoritative for this phone; a
         // remote snapshot must not drag it backwards.
@@ -1315,8 +1426,8 @@
     const scheduleSel=$("scheduleGame");
     if(scheduleSel){
       scheduleSel.innerHTML='<option value="">Choose a scheduled game…</option>';
-      SEASON_SCHEDULE.forEach(g=>{
-        const o=document.createElement("option");o.value=g.date;o.textContent=g.label;
+      seasonSchedule.forEach(g=>{
+        const o=document.createElement("option");o.value=g.date;o.textContent=formatScheduleLabel(g);
         if(state.opponent===g.opponent && state.homeAway===g.homeAway && state.snackPlayer===g.snack) o.selected=true;
         scheduleSel.append(o);
       });
@@ -1367,7 +1478,7 @@
 
   function applyScheduleGame(){
     if(!guardEdit())return;
-    const g=SEASON_SCHEDULE.find(x=>x.date===$("scheduleGame").value);
+    const g=seasonSchedule.find(x=>x.date===$("scheduleGame").value);
     if(!g)return;
     pushUndo("apply scheduled game");
     state.opponent=g.opponent;
@@ -1375,7 +1486,81 @@
     state.snackPlayer=g.snack;
     actionSave(["setup"]);
     renderAll();
-    setStatus("Loaded "+g.label+" — opponent, jersey, and snack are set.");
+    setStatus("Loaded "+formatScheduleLabel(g)+" — opponent, jersey, and snack are set.");
+  }
+
+  /**
+   * Edited as a draft and only committed to seasonSchedule (and
+   * localStorage) on Save, so opening the editor, poking around, and
+   * closing without saving never touches the real list — same reasoning
+   * as goalieDraft/lineupDraft on Pregame.
+   */
+  function openScheduleEditor(){
+    scheduleDraft=seasonSchedule.map(g=>({...g}));
+    renderScheduleEditor();
+    $("scheduleEditModal").classList.add("show");
+  }
+
+  function renderScheduleEditor(){
+    const box=$("scheduleRows");
+    if(!box)return;
+    box.innerHTML="";
+    scheduleDraft.forEach((g,i)=>{
+      const row=document.createElement("div");
+      row.className="card";
+      row.style.marginBottom="8px";
+      row.innerHTML=
+        "<div class='grid2'>"+
+          "<label>Date<input type='date' data-i='"+i+"' data-f='date' value='"+escapeHtml(g.date||"")+"'></label>"+
+          "<label>Time<input type='time' data-i='"+i+"' data-f='time' value='"+escapeHtml(g.time||"")+"'></label>"+
+        "</div>"+
+        "<div class='grid2' style='margin-top:8px'>"+
+          "<label>Opponent<input data-i='"+i+"' data-f='opponent' value='"+escapeHtml(g.opponent||"")+"'></label>"+
+          "<label>Jersey / Side<select data-i='"+i+"' data-f='homeAway'>"+
+            "<option value='home'"+(g.homeAway!=="away"?" selected":"")+">Home — Red</option>"+
+            "<option value='away'"+(g.homeAway==="away"?" selected":"")+">Away — Blue</option>"+
+          "</select></label>"+
+        "</div>"+
+        "<label style='display:block;margin-top:8px'>Snack <span class='muted small'>(plays goalie in Q4)</span>"+
+          "<select data-i='"+i+"' data-f='snack'>"+
+            "<option value=''>No snack assignment</option>"+
+            roster.map(p=>"<option value='"+escapeHtml(p)+"'"+(g.snack===p?" selected":"")+">"+escapeHtml(p)+"</option>").join("")+
+          "</select>"+
+        "</label>"+
+        "<div class='controls' style='margin-top:8px'><button class='danger' type='button' data-i='"+i+"' data-remove='1'>Remove This Game</button></div>";
+      box.append(row);
+    });
+    box.querySelectorAll("input,select").forEach(el=>{
+      el.onchange=()=>{ scheduleDraft[Number(el.dataset.i)][el.dataset.f]=el.value };
+    });
+    box.querySelectorAll("[data-remove]").forEach(btn=>{
+      btn.onclick=()=>{ scheduleDraft.splice(Number(btn.dataset.i),1); renderScheduleEditor() };
+    });
+  }
+
+  function addScheduleRow(){
+    scheduleDraft.push({date:"",time:"",opponent:"",homeAway:"home",snack:""});
+    renderScheduleEditor();
+  }
+
+  function saveScheduleEdits(){
+    const clean=scheduleDraft.filter(g=>g.date).sort((a,b)=>a.date.localeCompare(b.date));
+    saveSchedule(clean);
+    $("scheduleEditModal").classList.remove("show");
+    renderSetup();
+    setStatus("Season schedule saved — "+clean.length+" game"+(clean.length===1?"":"s")+".");
+  }
+
+  function downloadScheduleFile(){
+    const blob=new Blob([JSON.stringify(seasonSchedule,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="team71-schedule.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
   function setSnackPlayer(){
@@ -1758,8 +1943,7 @@
       if(!r.ok) throw new Error("plan commit failed");
       const canonical=await r.json();
 
-      const localShare={shareCode:state.shareCode,shareRole:state.shareRole};
-      state={...fresh(),...canonical,...localShare};
+      state=mergeRemoteState(canonical);
       goalieDraft=[...(state.goaliePlan||["","","",""])];
       save();
       setSyncStatus("live","Shared • plan synced");
@@ -1800,7 +1984,7 @@
       const ranked=[...pool].sort((a,b)=>{
         const pa=stats[a].gkQ*2+plannedCounts[a];
         const pb=stats[b].gkQ*2+plannedCounts[b];
-        return pa-pb || stats[a].minutes-stats[b].minutes;
+        return pa-pb || (stats[a].minutes-stats[b].minutes) || ((state.skill[b]||3)-(state.skill[a]||3));
       });
       const pick=ranked[0];
       plan[q]=pick;
@@ -1913,7 +2097,18 @@
       const badge=goals>0?'<div class="goal-badge">'+goals+'</div>':'';
       const minBadge=p?'<div class="min-badge">'+minfmt(state.play[p])+'m</div>':'';
       el.innerHTML=badge+minBadge+'<div class="shirt '+(slot==="GK"?"gk":jersey)+'"></div><div class="fname">'+short(p)+'</div><div class="fpos">'+posNames[slot]+'</div>';
-      el.onclick=()=>{if(!canEdit()||state.ended){return}if(state.selectedBench)makeManualSub(state.selectedBench,slot)};
+      el.classList.toggle("selected",state.selectedField===slot);
+      el.onclick=()=>{
+        if(!canEdit()||state.ended){return}
+        if(state.selectedBench){makeManualSub(state.selectedBench,slot);return}
+        if(state.selectedField===slot){state.selectedField=null;renderGame();return}
+        if(state.selectedField){
+          if(p) swapFieldPositions(state.selectedField,slot);
+          else{state.selectedField=null;renderGame()}
+          return;
+        }
+        if(p){state.selectedField=slot;renderGame()}
+      };
     });
     renderBench();renderStatusPlayers();renderMinutes();renderGoals();renderSubSuggestion();
   }
@@ -1933,7 +2128,7 @@
         b.className="bench-btn"+(state.selectedBench===p?" selected":"");
         const waiting=covered[p] ? " <span class='pill'>waiting on "+short(covered[p])+"</span>" : "";
         b.innerHTML='<span>'+p+waiting+'</span><span class="pill">'+minfmt(state.play[p])+' min</span>';
-        b.disabled=!canEdit();b.onclick=()=>{if(!guardEdit())return;state.selectedBench=state.selectedBench===p?null:p;renderBench()};
+        b.disabled=!canEdit();b.onclick=()=>{if(!guardEdit())return;state.selectedBench=state.selectedBench===p?null:p;state.selectedField=null;renderGame()};
         box.append(b);
       });
     });
@@ -1997,6 +2192,7 @@
         settleClock();          // bank her minutes up to this instant first
         state.lineup[slot]=null;
         vacatedSlot=slot;
+        if(state.selectedField===slot) state.selectedField=null;
       }
       if(state.selectedBench===p) state.selectedBench=null;
     }
@@ -2018,7 +2214,7 @@
     if(!pool.length)return"";
     // The snack player is the standing default for the last quarter.
     if(q===3 && state.snackPlayer && pool.includes(state.snackPlayer)) return state.snackPlayer;
-    return pool.sort((a,b)=>state.gk[a]-state.gk[b])[0];
+    return pool.sort((a,b)=>(state.gk[a]-state.gk[b]) || ((state.skill[b]||3)-(state.skill[a]||3)))[0];
   }
 
   /**
@@ -2030,19 +2226,23 @@
    * confirmReplacement and activeCoverLocks().
    */
   function openReplacementPicker(slot,outgoingPlayer){
-    const options=bench().sort((a,b)=>state.play[a]-state.play[b]);
+    const options=bench().sort((a,b)=>
+      (state.benchStreak[b]||0)-(state.benchStreak[a]||0) ||
+      (state.play[a]-state.play[b]) ||
+      ((state.skill[b]||3)-(state.skill[a]||3))
+    );
     const box=$("replaceOptions");
     box.innerHTML="";
     $("replaceTitle").textContent=outgoingPlayer+" is coming off "+posNames[slot]+" — who's going in?";
     $("replaceSubtitle").textContent=options.length
-      ? "Sorted by fewest minutes played."
+      ? "Sorted by who's sat out longest, then fewest minutes played."
       : "Nobody is available on the bench right now — "+posNames[slot]+" will stay empty until you sub someone in manually.";
 
     options.forEach((cand,i)=>{
       const btn=document.createElement("button");
       btn.className="replace-btn"+(i===0?" good":"");
       btn.dataset.name=cand;
-      btn.innerHTML="<span>"+cand+(i===0?" <span class='pill'>fewest minutes</span>":"")+"</span><span class='pill'>"+minfmt(state.play[cand])+" min</span>";
+      btn.innerHTML="<span>"+cand+(i===0?" <span class='pill'>top pick</span>":"")+"</span><span class='pill'>"+minfmt(state.play[cand])+" min</span>";
       btn.onclick=()=>confirmReplacement(slot,outgoingPlayer,cand);
       box.append(btn);
     });
@@ -2060,7 +2260,9 @@
 
     pushUndo("choose replacement");
     state.lineup[slot]=incoming;
-    state.selectedBench=null;
+    state.selectedBench=null;state.selectedField=null;
+    state.benchStreak=state.benchStreak||{};
+    state.benchStreak[incoming]=0;
     // The suggestion the coach was looking at (if any) was computed before
     // this slot was filled, so it may still list the just-placed player as
     // a free bench candidate. Every other lineup change clears this for the
@@ -2080,7 +2282,7 @@
 
     $("replaceModal").classList.remove("show");
     setLastSub(incoming+" IN for "+outgoingPlayer+" ("+posNames[slot]+")");
-    actionSave(wasRunning ? ["lineup","setup","clock","stats"] : ["lineup","setup"]);
+    actionSave(wasRunning ? ["lineup","setup","clock","stats"] : ["lineup","setup","stats"]);
     addAudit("Player status",incoming+" IN for "+outgoingPlayer+" ("+posNames[slot]+")");
     renderAll();
     setStatus(incoming+" is now in for "+outgoingPlayer+".");
@@ -2099,8 +2301,10 @@
 
     const outgoing=state.lineup[slot];
     state.lineup[slot]=incoming;
-    state.selectedBench=null;
+    state.selectedBench=null;state.selectedField=null;
     state.suggestedSub=null;
+    state.benchStreak=state.benchStreak||{};
+    state.benchStreak[incoming]=0;
 
     // If the goalkeeper changes during the period, update only THIS quarter's
     // displayed goalie assignment. Future quarter plans remain untouched.
@@ -2109,19 +2313,61 @@
     }
 
     setLastSub(incoming+" IN for "+outgoing+(slot==="GK"?" at GK":""));
-    actionSave(wasRunning ? ["lineup","clock","stats","setup"] : ["lineup","setup"]);
+    actionSave(wasRunning ? ["lineup","clock","stats","setup"] : ["lineup","stats","setup"]);
     addAudit(slot==="GK" ? "Goalie substitution" : "Manual substitution",
       incoming+" IN for "+outgoing+(slot==="GK"?" at GK":""));
     renderAll();
     setStatus(incoming+" in for "+outgoing+(slot==="GK"?" in goal.":"."));
   }
 
+  /**
+   * Two players already on the field (either one may be the goalie) trade
+   * positions directly — tap one, then tap the other, no bench involved.
+   * Both minutes totals (state.play) are untouched either way since both
+   * players stay on the field the whole time; only which position each of
+   * them is credited for (state.posPlay, and state.gk if GK is one of the
+   * two slots) changes from this instant on.
+   */
+  function swapFieldPositions(slotA,slotB){
+    if(!guardEdit())return;
+    if(!slots.includes(slotA)||!slots.includes(slotB)||slotA===slotB)return;
+    const pA=state.lineup[slotA], pB=state.lineup[slotB];
+    if(!pA||!pB)return;
+
+    const wasRunning=settleClock();
+    pushUndo("swap positions");
+
+    state.lineup[slotA]=pB;
+    state.lineup[slotB]=pA;
+    state.selectedField=null;
+    state.suggestedSub=null;
+
+    // A swap touching goalie moves this quarter's planned keeper the same
+    // way a manual sub into goal already does - the plan should reflect
+    // who's actually standing in goal right now.
+    if(slotA==="GK") state.goaliePlan[state.quarter]=pB;
+    if(slotB==="GK") state.goaliePlan[state.quarter]=pA;
+
+    setLastSub(pA+" ↔ "+pB+" swapped positions");
+    actionSave(wasRunning ? ["lineup","clock","stats","setup"] : ["lineup","setup"]);
+    addAudit("Position swap",pA+" ↔ "+pB);
+    renderAll();
+    setStatus(pA+" and "+pB+" swapped positions.");
+  }
+
   function suggestSub(force=false){
-    const b=benchForFairness().sort((a,b)=>state.play[a]-state.play[b]);
+    const b=benchForFairness().sort((a,b)=>
+      (state.benchStreak[b]||0)-(state.benchStreak[a]||0) ||
+      (state.play[a]-state.play[b]) ||
+      ((state.skill[b]||3)-(state.skill[a]||3))
+    );
     const fieldSlots=["LB","RB","M","F"]
       .map(s=>({slot:s,p:state.lineup[s]}))
       .filter(x=>x.p && !isCoveringPlayer(x.p))
-      .sort((a,b)=>state.play[b.p]-state.play[a.p]);
+      .sort((a,b)=>
+        (state.play[b.p]-state.play[a.p]) ||
+        ((state.skill[a.p]||3)-(state.skill[b.p]||3))
+      );
 
     if(!b.length || !fieldSlots.length){
       state.suggestedSub=null;
@@ -2230,6 +2476,14 @@
 
     pushUndo("scheduled rotation");
     const s=state.suggestedSub;
+    // Whoever was on the bench for this decision but didn't get picked (only
+    // possible when cover-locks shrink the swap below a full bench) just sat
+    // out again — bump her streak. Anyone coming on resets to 0.
+    const benchPool=benchForFairness();
+    state.benchStreak=state.benchStreak||{};
+    benchPool.forEach(p=>{
+      state.benchStreak[p]=s.incoming.includes(p) ? 0 : (state.benchStreak[p]||0)+1;
+    });
     s.outgoingSlots.forEach((slot,i)=>{
       if(s.incoming[i]) state.lineup[slot]=s.incoming[i];
     });
@@ -2248,7 +2502,7 @@
     suggestSub(true);
 
     setLastSub(desc);
-    actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup"]);
+    actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup","stats"]);
     addAudit("Scheduled substitution",desc);
     renderAll();
     setStatus("Sub made: "+desc+". Clock continued running.");
@@ -2491,7 +2745,7 @@
         state.awaitingQuarterTransition=false;
         state.subDone[state.quarter]=false;
         state.suggestedSub=null;
-        state.selectedBench=null;
+        state.selectedBench=null;state.selectedField=null;
         state.nextSubAt=state.quarter*QLEN+SUBINT;
         if(Object.values(preview).filter(Boolean).length===5){
           state.lineup={GK:preview.GK,LB:preview.LB,RB:preview.RB,M:preview.M,F:preview.F};
@@ -2591,7 +2845,7 @@
     state.nextSubAt=state.quarter*QLEN+SUBINT;
     state.subDone[state.quarter]=false;
     state.suggestedSub=null;
-    state.selectedBench=null;
+    state.selectedBench=null;state.selectedField=null;
 
     state.lineup={
       GK:preview.GK,
@@ -2650,7 +2904,7 @@
     state.awaitingQuarterTransition=false;
     state.subDone[state.quarter]=false;
     state.suggestedSub=null;
-    state.selectedBench=null;
+    state.selectedBench=null;state.selectedField=null;
     state.nextSubAt=state.quarter*QLEN+SUBINT;
 
     state.lineup={
@@ -2670,11 +2924,13 @@
     setStatus("Quarter "+(state.quarter+1)+" lineup is on the field. Position players, then press Start.");
   }
 
-  async function endGame(){
-    if(!guardEdit())return;
-    if(state.ended)return;
-    if(!confirm("End this game and save it to season history?"))return;
-
+  /**
+   * The save-to-history-and-tear-down-the-shared-game half of "End Game" -
+   * also reused by the auto-close-a-stale-game check at boot, so real
+   * progress from a game nobody formally ended still reaches season
+   * history instead of silently vanishing once the next game resets it.
+   */
+  async function closeOutGame(){
     if(state.running && state.timerOwnerId===CLIENT_ID) advanceClockToNow();
     state.running=false;
     state.clockStartedAt=null;
@@ -2728,6 +2984,16 @@
     if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
     if(auditPollHandle){clearInterval(auditPollHandle);auditPollHandle=null}
     save();
+
+    return cloudSaved;
+  }
+
+  async function endGame(){
+    if(!guardEdit())return;
+    if(state.ended)return;
+    if(!confirm("End this game and save it to season history?"))return;
+
+    const cloudSaved=await closeOutGame();
 
     setStatus(cloudSaved ? "Game saved to shared season history." : "Game saved locally; cloud history will sync when online.");
     activeGameCache=null;
@@ -2815,6 +3081,36 @@
   $("opponent").addEventListener("input",()=>{state.opponent=$("opponent").value;actionSave(["setup"])});$("homeAway").addEventListener("change",()=>{state.homeAway=$("homeAway").value;actionSave(["setup"])});
   $("snackPlayer").addEventListener("change",setSnackPlayer);
   $("scheduleGame").addEventListener("change",applyScheduleGame);
+  $("editScheduleBtn").onclick=openScheduleEditor;
+  $("addScheduleRowBtn").onclick=addScheduleRow;
+  $("saveScheduleBtn").onclick=saveScheduleEdits;
+  $("closeScheduleEditBtn").onclick=()=>$("scheduleEditModal").classList.remove("show");
+  $("closeScheduleEditXBtn").onclick=()=>$("scheduleEditModal").classList.remove("show");
+  $("downloadScheduleFileBtn").onclick=downloadScheduleFile;
+  $("loadScheduleFileBtn").onclick=()=>$("scheduleFileInput").click();
+  $("scheduleFileInput").addEventListener("change",e=>{
+    const f=e.target.files[0];
+    e.target.value="";
+    if(!f)return;
+    const r=new FileReader();
+    r.onload=()=>{
+      try{
+        const j=JSON.parse(r.result);
+        if(!Array.isArray(j))throw new Error("not an array");
+        scheduleDraft=j.map(g=>({
+          date:String(g.date||""), time:String(g.time||""),
+          opponent:String(g.opponent||""),
+          homeAway:g.homeAway==="away"?"away":"home",
+          snack:String(g.snack||"")
+        }));
+        renderScheduleEditor();
+        setStatus("Schedule file loaded — review below, then Save.");
+      }catch(err){
+        alert("That schedule file could not be read. It should be a JSON file with a list of games (the same shape as Download Current Schedule produces).");
+      }
+    };
+    r.readAsText(f);
+  });
   $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});actionSave(["setup","lineup"]);renderAll()};
   $("buildPlanBtn").onclick=buildPlan;
   $("regenerateLineupBtn").onclick=regenerateLineup;
@@ -2850,17 +3146,24 @@
 
   function renderAll(){renderSetup();renderGoaliePlanner();renderLineupPlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
   load();
-  if(state.running && state.timerOwnerId===CLIENT_ID){
-    requestWakeLock();
-    if(!timerHandle)timerHandle=setInterval(tick,250);
-  }
-  renderAll();
-  fetchActiveGame();
-  loadCloudHistory();
-  startCloudPolling();
-  startAuditPolling();
-  startActivePolling();
-  setInterval(()=>{ if(state.running && state.timerOwnerId!==CLIENT_ID) renderGame(); updateSyncAge(); },250);
+  (async()=>{
+    // Must resolve before the first render and the running/wake-lock check
+    // below, or a stale game flashes on screen for a moment before being
+    // swept away — or worse, its (pre-reset) state.running momentarily
+    // starts a wake lock/timer for a game that's about to be wiped anyway.
+    await autoCloseStaleGame();
+    if(state.running && state.timerOwnerId===CLIENT_ID){
+      requestWakeLock();
+      if(!timerHandle)timerHandle=setInterval(tick,250);
+    }
+    renderAll();
+    fetchActiveGame();
+    loadCloudHistory();
+    startCloudPolling();
+    startAuditPolling();
+    startActivePolling();
+    setInterval(()=>{ if(state.running && state.timerOwnerId!==CLIENT_ID) renderGame(); updateSyncAge(); },250);
+  })();
 
   if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
 })();

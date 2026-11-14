@@ -33,6 +33,10 @@ your-repo/
 ├── V35_FIELDHUD.md
 ├── V36_FIELDBAR.md
 ├── V37_PRINTDARK.md
+├── V38_FRESHSTART.md
+├── V39_SWAP.md
+├── V40_SCHEDULED.md
+├── V41_FAIRSHARE.md
 ├── package.json
 ├── package-lock.json
 ├── wrangler.json
@@ -129,7 +133,7 @@ This is the step that was missing last time. Do all three.
 2. **Check the version banner.** Load the site. Under the title it should read:
 
    ```
-   East Islip GU7 • 5v5 • 4 × 12-minute quarters • v37 PRINTDARK
+   East Islip GU7 • 5v5 • 4 × 12-minute quarters • v41 FAIRSHARE
    ```
 
    If it still says an older version, the deploy did not land — go back to
@@ -146,7 +150,7 @@ The app is an installed PWA with a service worker. After a deploy:
 - The service worker fetches `index.html` from the network first, so one reload
   normally picks up the new version.
 - If a phone is stubborn: close the app fully (swipe it away), reopen, and pull
-  to refresh. The cache name changed to `team71-v37-printdark`, so the old cache
+  to refresh. The cache name changed to `team71-v41-fairshare`, so the old cache
   is deleted on activation.
 
 ---
@@ -156,7 +160,7 @@ The app is an installed PWA with a service worker. After a deploy:
 ```bash
 npm install
 npm run dev      # wrangler dev, against a local D1
-npm test         # 147 tests, no network or Cloudflare account needed
+npm test         # 170 tests, no network or Cloudflare account needed
 npm run tail     # live logs from the deployed Worker
 ```
 

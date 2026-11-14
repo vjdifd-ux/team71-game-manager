@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v37 PRINTDARK
+# Team 71 Game Manager — v41 FAIRSHARE
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,12 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v37:** see [`V37_PRINTDARK.md`](V37_PRINTDARK.md)
-- **Earlier changes:** [`V36_FIELDBAR.md`](V36_FIELDBAR.md),
+- **What changed in v41:** see [`V41_FAIRSHARE.md`](V41_FAIRSHARE.md)
+- **Earlier changes:** [`V40_SCHEDULED.md`](V40_SCHEDULED.md),
+  [`V39_SWAP.md`](V39_SWAP.md),
+  [`V38_FRESHSTART.md`](V38_FRESHSTART.md),
+  [`V37_PRINTDARK.md`](V37_PRINTDARK.md),
+  [`V36_FIELDBAR.md`](V36_FIELDBAR.md),
   [`V35_FIELDHUD.md`](V35_FIELDHUD.md),
   [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md),
   [`V33_PRINTFIX.md`](V33_PRINTFIX.md) (incomplete — see V34),
@@ -25,10 +29,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v37 PRINTDARK
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v41 FAIRSHARE
 ```
 
-Worth a glance before every game. If it does not say `v37 PRINTDARK`, the deploy
+Worth a glance before every game. If it does not say `v41 FAIRSHARE`, the deploy
 did not land and you are running older code.
 
 ---
@@ -43,6 +47,16 @@ did not land and you are running older code.
    Q4 by default (the Q4 goalie dropdown shows this as soon as snack is set,
    not just after Build Game Plan runs). Everyone else is equally eligible
    for goalie; there's no per-player preference to set.
+   - **Edit Season Schedule** opens an editor for the whole list — date,
+     time, opponent, home/away, and snack for each game, with Add/Remove
+     per game. Changes are a draft until you tap Save, so opening it to
+     look around is always safe. **Download Current Schedule** exports it
+     as a file; **Load Schedule File** replaces the editor's contents with
+     one (also just a draft until Save) — the fastest way to get a whole
+     new season's schedule onto a phone, or to copy the same schedule onto
+     a second coach's phone by sharing that one file. The schedule lives
+     only on this phone, not in the shared game — the two coaches apply
+     it independently, same as a skill ranking.
 2. Set attendance for each girl. Marking someone Out here does the same thing
    as marking her Out during the game: she comes off the field, her minutes
    stop, any quarter where she was the planned goalie is reassigned right
@@ -53,7 +67,10 @@ did not land and you are running older code.
    say) is left alone. Each player also has a **coach-only skill ranking**
    (1–5) here — it only ever softens a tie in playing time, so it can't
    override real fairness, but it stops a brand-new or lower-ranked player
-   from ending up in the starting five by pure coincidence of roster order.
+   from ending up in the starting five, a goalie quarter, or a bench swap by
+   pure coincidence of roster order. It's the same tiebreaker everywhere
+   fairness is decided: starting lineup, season goalie plan, the suggested
+   whole-bench swap, and an emergency goalie replacement.
 3. Pick a goalie for each of the four quarters, or leave some blank.
 4. **Starting Lineup** — a suggested GK/LB/RB/M/F for kickoff, weighing season
    minutes first, skill ranking as a tiebreaker, and each player's position
@@ -124,7 +141,11 @@ did not land and you are running older code.
   End Period. The 6:00 mark is a reminder, never a forced stop — the reminder
   card starts flashing once you're past it and the rotation still isn't done.
 - **Sub In Whole Bench** brings every bench player on at once — fewest minutes
-  in, most minutes out, one for one — whenever you tap it. Which incoming
+  in, most minutes out, one for one — whenever you tap it. If the bench is
+  ever bigger than the open field spots (an emergency cover-lock, say),
+  whoever's sat out the most rotations in a row gets first pick back on, so
+  nobody sits twice running when it's avoidable; a skill-rank tie still
+  breaks toward the higher-ranked player either way. Which incoming
   player lands at which open position also favors whichever of the vacated
   spots she's played the least this game, so a fair swap on minutes doesn't
   also happen to repeat her most-played position. It's a suggestion, never
@@ -136,10 +157,18 @@ did not land and you are running older code.
   yanked straight back out. A manual sub always overrides this.
 - To sub by hand: tap a sideline player, then tap any field position, including
   goalie. Substitutions never move the game clock.
+- To swap two players who are already on the field (goalie included), tap
+  one — she's highlighted — then tap the other. No bench involved. Tap the
+  same player again, or a bench player, to cancel the swap instead.
 - **End Period / Set Up Next Quarter** deliberately ends the period, moves the
   clock to the quarter boundary, applies the next quarter's lineup, and waits for
   you to press Start. This is the one button that does move the clock.
 - **End Game** saves the game to season history and closes the shared session.
+- **A game left open for more than a day closes itself out automatically**
+  the next time the app is opened — same as tapping End Game (so real
+  progress still reaches season history) followed by New Game. Nothing
+  about setting up this week's game ever depends on remembering to reset
+  last week's.
 - **Test Speed & Sound** lives in its own card at the bottom of the tab, out
   of the way of the controls you actually need mid-game. Test Speed cycles
   1× → 10× → 60×, changeable only while paused. At 60× a 12-minute quarter
@@ -169,7 +198,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                147 tests — see below
+test/                170 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -194,7 +223,7 @@ npm install
 npm test
 ```
 
-147 tests, about 20 seconds, no network or Cloudflare account required.
+170 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game
@@ -208,5 +237,17 @@ npm test
 - `test/fixtures/v21-shipped-index.html` — the build that was actually live,
   kept so several tests can demonstrate the old broken behaviour alongside the
   fix. Do not edit it.
+
+**No automated visual/print regression check, by decision, not oversight.**
+A UI or print-layout change still gets eyeballed by hand — a temporary
+`npm install --no-save playwright-core`, a headless screenshot, then
+`npm uninstall playwright-core` — the same way v39's field-swap highlight
+and v40's schedule editor were checked. That stays outside `npm test` on
+purpose: the suite's whole value is running in ~20 seconds with no browser
+or network, and a screenshot diff is a different, heavier kind of test that
+would also need a way to tell "the layout moved on purpose" from "it
+broke," which a plain pixel or DOM diff can't do on its own. Revisit this
+if visual regressions start slipping through, but don't add the dependency
+back permanently just because a round of UI work is coming up.
 
 Run `npm test` before deploying.
