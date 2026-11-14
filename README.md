@@ -238,4 +238,16 @@ npm test
   kept so several tests can demonstrate the old broken behaviour alongside the
   fix. Do not edit it.
 
+**No automated visual/print regression check, by decision, not oversight.**
+A UI or print-layout change still gets eyeballed by hand — a temporary
+`npm install --no-save playwright-core`, a headless screenshot, then
+`npm uninstall playwright-core` — the same way v39's field-swap highlight
+and v40's schedule editor were checked. That stays outside `npm test` on
+purpose: the suite's whole value is running in ~20 seconds with no browser
+or network, and a screenshot diff is a different, heavier kind of test that
+would also need a way to tell "the layout moved on purpose" from "it
+broke," which a plain pixel or DOM diff can't do on its own. Revisit this
+if visual regressions start slipping through, but don't add the dependency
+back permanently just because a round of UI work is coming up.
+
 Run `npm test` before deploying.
