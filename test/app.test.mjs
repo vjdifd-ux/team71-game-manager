@@ -79,6 +79,24 @@ test("if the snack player is unavailable, Q4 falls back to normal fairness", asy
   app.close();
 });
 
+test("v41: a higher-rated player is preferred for an unassigned goalie quarter on a pure tie", async () => {
+  // Every player starts at 0 season goalie-quarters and 0 minutes, so Q1 is
+  // a pure tie without a rating — same situation as the starting-five tie
+  // test above, just for the goalie plan instead.
+  const withoutRating = await openApp();
+  await withoutRating.click("buildPlanBtn");
+  assert.equal(withoutRating.state().goaliePlan[0], "Shalom Amaya",
+    "sanity check: on a plain tie, roster order picks the keeper");
+  withoutRating.close();
+
+  const app = await openApp();
+  await app.setSkill("Olivia Carpenter", 5);
+  await app.click("buildPlanBtn");
+  assert.equal(app.state().goaliePlan[0], "Olivia Carpenter",
+    "a higher-rated player on an otherwise pure tie is preferred in goal");
+  app.close();
+});
+
 test("picking a scheduled game fills in opponent, jersey, and snack together", async () => {
   const app = await openApp();
   await app.setScheduleGame("2026-09-19"); // at Team 75, Away, snack Aria Stagnitta
@@ -746,6 +764,80 @@ test("REGRESSION: pressing Sub In Whole Bench again after the rotation is done a
   app.close();
 });
 
+test("v41: a lower-rated field player is benched first when minutes are tied", async () => {
+  const app = await openApp();
+  await app.setGoalie(0, "Shalom Amaya");
+  await app.setLineupSlot("LB", "Olivia Carpenter");
+  await app.setLineupSlot("RB", "Norah Dineen");
+  await app.setLineupSlot("M", "Kennedy Kozlosky");
+  await app.setLineupSlot("F", "Juliette Maglio");
+  await app.setSkill("Olivia Carpenter", 1);
+  await app.setSkill("Norah Dineen", 5);
+  await app.click("buildPlanBtn");
+  await app.click("startPauseBtn");
+  await run(app, 400);                     // past 6:00; every field player still has equal minutes
+
+  const s = app.state();
+  assert.ok(s.suggestedSub.outgoingPlayers.includes("Olivia Carpenter"),
+    "the lower-rated player sits on a pure minutes tie");
+  assert.ok(!s.suggestedSub.outgoingPlayers.includes("Norah Dineen"),
+    "the higher-rated player is kept on over an equal-minutes, lower-rated teammate");
+  app.close();
+});
+
+test("v41: a bench player who just sat out is prioritized next time, not left out twice in a row", async () => {
+  // Engineered scenario: this app's fixed 8-player roster always swaps the
+  // whole bench on under ordinary play (bench.length never exceeds the open
+  // field slots), so "someone sits twice in a row" can't occur through normal
+  // gameplay. Seeding two slots empty (GK and F) while everyone is present
+  // shrinks the open field slots below the bench size, the same way a bigger
+  // roster or more simultaneous emergencies would in a real game.
+  const present = Object.fromEntries(roster.map((p) => [p, true]));
+  const availability = Object.fromEntries(roster.map((p) => [p, "available"]));
+  const play = Object.fromEntries(roster.map((p) => [p, 0]));
+  const gk = Object.fromEntries(roster.map((p) => [p, 0]));
+  const goals = Object.fromEntries(roster.map((p) => [p, 0]));
+  const benchStreak = Object.fromEntries(roster.map((p) => [p, 0]));
+  benchStreak["Aria Stagnitta"] = 5;           // already sat out several rotations running
+
+  const seedState = {
+    gameId: "g_test", opponent: "Team 72", homeAway: "home",
+    present, availability, gkPref: {},
+    goaliePlan: ["", "", "", ""],
+    lineup: { GK: null, LB: "Shalom Amaya", RB: "Olivia Carpenter", M: "Norah Dineen", F: null },
+    elapsed: 0, quarter: 0, running: false, ended: false,
+    play, gk, goals, ourScore: 0, theirScore: 0, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 0, testSpeed: 1, timerOwnerId: "",
+    benchStreak,
+  };
+  const app = await openApp({ seedState });
+
+  // Bench (5): Kennedy Kozlosky, Juliette Maglio, Luna Scrivano, Serafina
+  // Sinagra, Aria Stagnitta. Open field slots (3): LB, RB, M (F is empty).
+  let s = app.state();
+  assert.equal(s.suggestedSub.incoming.length, 3, "only 3 of the 5 bench players can come in");
+  assert.ok(s.suggestedSub.incoming.includes("Aria Stagnitta"),
+    "her existing streak puts her first in line");
+
+  await app.click("acceptSubBtn");
+  s = app.state();
+  assert.equal(s.benchStreak["Aria Stagnitta"], 0, "she came on, so her streak resets");
+  const leftOutFirstRound = ["Kennedy Kozlosky", "Juliette Maglio", "Luna Scrivano", "Serafina Sinagra"]
+    .filter((p) => !app.onField().includes(p));
+  assert.equal(leftOutFirstRound.length, 2, "two of the four non-Aria bench players sat out this round");
+  for (const p of leftOutFirstRound) assert.equal(s.benchStreak[p], 1, "sitting out bumps the streak");
+
+  // Next rotation: whoever just sat out should be first in line this time,
+  // not passed over again in favor of players who were already on the field.
+  await run(app, 1);     // clear the rapid-repeat guard, same beat as a real second press
+  await app.click("acceptSubBtn");
+  s = app.state();
+  for (const p of leftOutFirstRound) {
+    assert.ok(app.onField().includes(p), p + " should not sit out twice in a row when avoidable");
+  }
+  app.close();
+});
+
 test("REGRESSION: the countdown keeps counting to the buzzer after the 6:00 mark", async () => {
   const app = await readyGame();
   await app.click("startPauseBtn");
@@ -978,6 +1070,15 @@ test("a planned goalie who becomes unavailable is replaced in the future plan on
   assert.notEqual(s.goaliePlan[3], "Luna Scrivano");
   assert.ok(s.goaliePlan[3], "a replacement should be chosen");
   assert.equal(s.goaliePlan[0], "Olivia Carpenter", "Q1 is in the past, leave it recorded");
+  app.close();
+});
+
+test("v41: an emergency goalie replacement also prefers a higher-rated player on a tie", async () => {
+  const app = await readyGame();     // Q1 goalie is Olivia Carpenter
+  await app.setSkill("Norah Dineen", 5);
+  await app.setAvailPregame("Olivia Carpenter", "out");
+  assert.equal(app.state().goaliePlan[0], "Norah Dineen",
+    "a higher-rated player is preferred over plain roster order on a pure gk-minutes tie");
   app.close();
 });
 
@@ -2026,8 +2127,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v40 so the deployed build is identifiable", async () => {
+test("the version banner says v41 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v40 SCHEDULED/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v41 FAIRSHARE/);
   app.close();
 });

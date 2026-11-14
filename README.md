@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v40 SCHEDULED
+# Team 71 Game Manager — v41 FAIRSHARE
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,9 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v40:** see [`V40_SCHEDULED.md`](V40_SCHEDULED.md)
-- **Earlier changes:** [`V39_SWAP.md`](V39_SWAP.md),
+- **What changed in v41:** see [`V41_FAIRSHARE.md`](V41_FAIRSHARE.md)
+- **Earlier changes:** [`V40_SCHEDULED.md`](V40_SCHEDULED.md),
+  [`V39_SWAP.md`](V39_SWAP.md),
   [`V38_FRESHSTART.md`](V38_FRESHSTART.md),
   [`V37_PRINTDARK.md`](V37_PRINTDARK.md),
   [`V36_FIELDBAR.md`](V36_FIELDBAR.md),
@@ -28,10 +29,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v40 SCHEDULED
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v41 FAIRSHARE
 ```
 
-Worth a glance before every game. If it does not say `v40 SCHEDULED`, the deploy
+Worth a glance before every game. If it does not say `v41 FAIRSHARE`, the deploy
 did not land and you are running older code.
 
 ---
@@ -66,7 +67,10 @@ did not land and you are running older code.
    say) is left alone. Each player also has a **coach-only skill ranking**
    (1–5) here — it only ever softens a tie in playing time, so it can't
    override real fairness, but it stops a brand-new or lower-ranked player
-   from ending up in the starting five by pure coincidence of roster order.
+   from ending up in the starting five, a goalie quarter, or a bench swap by
+   pure coincidence of roster order. It's the same tiebreaker everywhere
+   fairness is decided: starting lineup, season goalie plan, the suggested
+   whole-bench swap, and an emergency goalie replacement.
 3. Pick a goalie for each of the four quarters, or leave some blank.
 4. **Starting Lineup** — a suggested GK/LB/RB/M/F for kickoff, weighing season
    minutes first, skill ranking as a tiebreaker, and each player's position
@@ -137,7 +141,11 @@ did not land and you are running older code.
   End Period. The 6:00 mark is a reminder, never a forced stop — the reminder
   card starts flashing once you're past it and the rotation still isn't done.
 - **Sub In Whole Bench** brings every bench player on at once — fewest minutes
-  in, most minutes out, one for one — whenever you tap it. Which incoming
+  in, most minutes out, one for one — whenever you tap it. If the bench is
+  ever bigger than the open field spots (an emergency cover-lock, say),
+  whoever's sat out the most rotations in a row gets first pick back on, so
+  nobody sits twice running when it's avoidable; a skill-rank tie still
+  breaks toward the higher-ranked player either way. Which incoming
   player lands at which open position also favors whichever of the vacated
   spots she's played the least this game, so a fair swap on minutes doesn't
   also happen to repeat her most-played position. It's a suggestion, never
@@ -190,7 +198,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                166 tests — see below
+test/                170 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -215,7 +223,7 @@ npm install
 npm test
 ```
 
-166 tests, about 20 seconds, no network or Cloudflare account required.
+170 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

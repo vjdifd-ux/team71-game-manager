@@ -201,7 +201,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v40 SCHEDULED</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v41 FAIRSHARE</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -564,6 +564,12 @@
       awaitingQuarterTransition:false, planBuilt:false,
       play:Object.fromEntries(roster.map(p=>[p,0])), gk:Object.fromEntries(roster.map(p=>[p,0])),
       posPlay:Object.fromEntries(roster.map(p=>[p,{GK:0,LB:0,RB:0,M:0,F:0}])),
+      // How many consecutive completed rotations each player has sat out —
+      // not minutes, which already balance out over time, but literally
+      // "did she just sit last time too." Reset to 0 the instant she comes
+      // back on, incremented only when a real rotation decision leaves her
+      // on the bench again. See suggestSub().
+      benchStreak:Object.fromEntries(roster.map(p=>[p,0])),
       skill:Object.fromEntries(roster.map(p=>[p,skillRatings[p]||3])),
       goals:Object.fromEntries(roster.map(p=>[p,0])), ourScore:0,theirScore:0,goalLog:[],
       nextSubAt:SUBINT, subDone:[false,false,false,false], suggestedSub:null,
@@ -1978,7 +1984,7 @@
       const ranked=[...pool].sort((a,b)=>{
         const pa=stats[a].gkQ*2+plannedCounts[a];
         const pb=stats[b].gkQ*2+plannedCounts[b];
-        return pa-pb || stats[a].minutes-stats[b].minutes;
+        return pa-pb || (stats[a].minutes-stats[b].minutes) || ((state.skill[b]||3)-(state.skill[a]||3));
       });
       const pick=ranked[0];
       plan[q]=pick;
@@ -2208,7 +2214,7 @@
     if(!pool.length)return"";
     // The snack player is the standing default for the last quarter.
     if(q===3 && state.snackPlayer && pool.includes(state.snackPlayer)) return state.snackPlayer;
-    return pool.sort((a,b)=>state.gk[a]-state.gk[b])[0];
+    return pool.sort((a,b)=>(state.gk[a]-state.gk[b]) || ((state.skill[b]||3)-(state.skill[a]||3)))[0];
   }
 
   /**
@@ -2220,19 +2226,23 @@
    * confirmReplacement and activeCoverLocks().
    */
   function openReplacementPicker(slot,outgoingPlayer){
-    const options=bench().sort((a,b)=>state.play[a]-state.play[b]);
+    const options=bench().sort((a,b)=>
+      (state.benchStreak[b]||0)-(state.benchStreak[a]||0) ||
+      (state.play[a]-state.play[b]) ||
+      ((state.skill[b]||3)-(state.skill[a]||3))
+    );
     const box=$("replaceOptions");
     box.innerHTML="";
     $("replaceTitle").textContent=outgoingPlayer+" is coming off "+posNames[slot]+" — who's going in?";
     $("replaceSubtitle").textContent=options.length
-      ? "Sorted by fewest minutes played."
+      ? "Sorted by who's sat out longest, then fewest minutes played."
       : "Nobody is available on the bench right now — "+posNames[slot]+" will stay empty until you sub someone in manually.";
 
     options.forEach((cand,i)=>{
       const btn=document.createElement("button");
       btn.className="replace-btn"+(i===0?" good":"");
       btn.dataset.name=cand;
-      btn.innerHTML="<span>"+cand+(i===0?" <span class='pill'>fewest minutes</span>":"")+"</span><span class='pill'>"+minfmt(state.play[cand])+" min</span>";
+      btn.innerHTML="<span>"+cand+(i===0?" <span class='pill'>top pick</span>":"")+"</span><span class='pill'>"+minfmt(state.play[cand])+" min</span>";
       btn.onclick=()=>confirmReplacement(slot,outgoingPlayer,cand);
       box.append(btn);
     });
@@ -2251,6 +2261,8 @@
     pushUndo("choose replacement");
     state.lineup[slot]=incoming;
     state.selectedBench=null;state.selectedField=null;
+    state.benchStreak=state.benchStreak||{};
+    state.benchStreak[incoming]=0;
     // The suggestion the coach was looking at (if any) was computed before
     // this slot was filled, so it may still list the just-placed player as
     // a free bench candidate. Every other lineup change clears this for the
@@ -2270,7 +2282,7 @@
 
     $("replaceModal").classList.remove("show");
     setLastSub(incoming+" IN for "+outgoingPlayer+" ("+posNames[slot]+")");
-    actionSave(wasRunning ? ["lineup","setup","clock","stats"] : ["lineup","setup"]);
+    actionSave(wasRunning ? ["lineup","setup","clock","stats"] : ["lineup","setup","stats"]);
     addAudit("Player status",incoming+" IN for "+outgoingPlayer+" ("+posNames[slot]+")");
     renderAll();
     setStatus(incoming+" is now in for "+outgoingPlayer+".");
@@ -2291,6 +2303,8 @@
     state.lineup[slot]=incoming;
     state.selectedBench=null;state.selectedField=null;
     state.suggestedSub=null;
+    state.benchStreak=state.benchStreak||{};
+    state.benchStreak[incoming]=0;
 
     // If the goalkeeper changes during the period, update only THIS quarter's
     // displayed goalie assignment. Future quarter plans remain untouched.
@@ -2299,7 +2313,7 @@
     }
 
     setLastSub(incoming+" IN for "+outgoing+(slot==="GK"?" at GK":""));
-    actionSave(wasRunning ? ["lineup","clock","stats","setup"] : ["lineup","setup"]);
+    actionSave(wasRunning ? ["lineup","clock","stats","setup"] : ["lineup","stats","setup"]);
     addAudit(slot==="GK" ? "Goalie substitution" : "Manual substitution",
       incoming+" IN for "+outgoing+(slot==="GK"?" at GK":""));
     renderAll();
@@ -2342,11 +2356,18 @@
   }
 
   function suggestSub(force=false){
-    const b=benchForFairness().sort((a,b)=>state.play[a]-state.play[b]);
+    const b=benchForFairness().sort((a,b)=>
+      (state.benchStreak[b]||0)-(state.benchStreak[a]||0) ||
+      (state.play[a]-state.play[b]) ||
+      ((state.skill[b]||3)-(state.skill[a]||3))
+    );
     const fieldSlots=["LB","RB","M","F"]
       .map(s=>({slot:s,p:state.lineup[s]}))
       .filter(x=>x.p && !isCoveringPlayer(x.p))
-      .sort((a,b)=>state.play[b.p]-state.play[a.p]);
+      .sort((a,b)=>
+        (state.play[b.p]-state.play[a.p]) ||
+        ((state.skill[a.p]||3)-(state.skill[b.p]||3))
+      );
 
     if(!b.length || !fieldSlots.length){
       state.suggestedSub=null;
@@ -2455,6 +2476,14 @@
 
     pushUndo("scheduled rotation");
     const s=state.suggestedSub;
+    // Whoever was on the bench for this decision but didn't get picked (only
+    // possible when cover-locks shrink the swap below a full bench) just sat
+    // out again — bump her streak. Anyone coming on resets to 0.
+    const benchPool=benchForFairness();
+    state.benchStreak=state.benchStreak||{};
+    benchPool.forEach(p=>{
+      state.benchStreak[p]=s.incoming.includes(p) ? 0 : (state.benchStreak[p]||0)+1;
+    });
     s.outgoingSlots.forEach((slot,i)=>{
       if(s.incoming[i]) state.lineup[slot]=s.incoming[i];
     });
@@ -2473,7 +2502,7 @@
     suggestSub(true);
 
     setLastSub(desc);
-    actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup"]);
+    actionSave(wasRunning ? ["lineup","clock","stats"] : ["lineup","stats"]);
     addAudit("Scheduled substitution",desc);
     renderAll();
     setStatus("Sub made: "+desc+". Clock continued running.");

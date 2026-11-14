@@ -1,4 +1,4 @@
-const CACHE='team71-v40-scheduled';
+const CACHE='team71-v41-fairshare';
 const STATIC=['./manifest.json','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{
