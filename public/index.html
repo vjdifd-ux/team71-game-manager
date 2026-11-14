@@ -201,7 +201,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v39 SWAP</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v40 SCHEDULED</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -219,6 +219,7 @@
       <label style="display:block;margin-top:10px">This week's game <span class="muted small">(fills in opponent, jersey, and snack)</span>
         <select id="scheduleGame"><option value="">Choose a scheduled game…</option></select>
       </label>
+      <div class="controls" style="margin-top:6px"><button id="editScheduleBtn" type="button">Edit Season Schedule</button></div>
       <div class="grid2" style="margin-top:10px">
         <label>Opponent<input id="opponent" value="Team 72"></label>
         <label>Jersey / Side<select id="homeAway"><option value="home">Home — Red</option><option value="away">Away — Blue</option></select></label>
@@ -445,22 +446,66 @@
   </div>
 </div>
 
+<div class="modal" id="scheduleEditModal">
+  <div class="modal-card" style="width:min(640px,100%)">
+    <button class="modal-x" id="closeScheduleEditXBtn" aria-label="Close" title="Close">&times;</button>
+    <strong>Season Schedule</strong>
+    <div class="muted small" style="margin-top:4px">Edit any game, add or remove one, or load a whole new schedule from a file. Nothing here takes effect until you tap Save.</div>
+    <div id="scheduleRows" style="margin-top:10px"></div>
+    <div class="controls" style="margin-top:8px"><button id="addScheduleRowBtn" type="button">Add Game</button></div>
+    <div class="controls" style="margin-top:14px">
+      <button id="loadScheduleFileBtn" type="button">Load Schedule File</button>
+      <button id="downloadScheduleFileBtn" type="button">Download Current Schedule</button>
+    </div>
+    <input type="file" id="scheduleFileInput" accept="application/json" style="display:none">
+    <div class="controls" style="margin-top:14px">
+      <button class="primary" id="saveScheduleBtn" type="button">Save</button>
+      <button id="closeScheduleEditBtn" type="button">Close Without Saving</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
   const roster=["Shalom Amaya","Olivia Carpenter","Norah Dineen","Kennedy Kozlosky","Juliette Maglio","Luna Scrivano","Serafina Sinagra","Aria Stagnitta"];
   // The season schedule, from the team's game-day email — one dropdown fills
   // in opponent, jersey/side, and the snack assignment (which also drives
   // the Q4 goalie default) in one pick instead of three.
-  const SEASON_SCHEDULE=[
-    {date:"2026-09-12",label:"Sat Sep 12, 9:00 AM vs Team 72 (Home)",opponent:"Team 72",homeAway:"home",snack:"Serafina Sinagra"},
-    {date:"2026-09-19",label:"Sat Sep 19, 2:00 PM at Team 75 (Away)",opponent:"Team 75",homeAway:"away",snack:"Aria Stagnitta"},
-    {date:"2026-09-26",label:"Sat Sep 26, 2:00 PM vs Team 76 (Home)",opponent:"Team 76",homeAway:"home",snack:"Kennedy Kozlosky"},
-    {date:"2026-10-03",label:"Sat Oct 3, 1:00 PM vs Team 75 (Home)",opponent:"Team 75",homeAway:"home",snack:"Luna Scrivano"},
-    {date:"2026-10-17",label:"Sat Oct 17, 2:00 PM vs Team 72 (Home)",opponent:"Team 72",homeAway:"home",snack:"Olivia Carpenter"},
-    {date:"2026-10-24",label:"Sat Oct 24, 2:00 PM at Team 74 (Away)",opponent:"Team 74",homeAway:"away",snack:"Juliette Maglio"},
-    {date:"2026-11-01",label:"Sun Nov 1, 2:00 PM vs Team 75 (Home)",opponent:"Team 75",homeAway:"home",snack:"Shalom Amaya"},
-    {date:"2026-11-07",label:"Sat Nov 7, 2:00 PM at Team 76 (Away)",opponent:"Team 76",homeAway:"away",snack:"Norah Dineen"}
+  const DEFAULT_SCHEDULE=[
+    {date:"2026-09-12",time:"09:00",opponent:"Team 72",homeAway:"home",snack:"Serafina Sinagra"},
+    {date:"2026-09-19",time:"14:00",opponent:"Team 75",homeAway:"away",snack:"Aria Stagnitta"},
+    {date:"2026-09-26",time:"14:00",opponent:"Team 76",homeAway:"home",snack:"Kennedy Kozlosky"},
+    {date:"2026-10-03",time:"13:00",opponent:"Team 75",homeAway:"home",snack:"Luna Scrivano"},
+    {date:"2026-10-17",time:"14:00",opponent:"Team 72",homeAway:"home",snack:"Olivia Carpenter"},
+    {date:"2026-10-24",time:"14:00",opponent:"Team 74",homeAway:"away",snack:"Juliette Maglio"},
+    {date:"2026-11-01",time:"14:00",opponent:"Team 75",homeAway:"home",snack:"Shalom Amaya"},
+    {date:"2026-11-07",time:"14:00",opponent:"Team 76",homeAway:"away",snack:"Norah Dineen"}
   ];
+  const SCHEDULE_KEY="team71-v5-schedule";
+  // Editable in-app (Edit Season Schedule), or replaced wholesale by
+  // loading a schedule file — so the hardcoded list above is only ever the
+  // starting point for a brand-new install, never the live copy.
+  let seasonSchedule=loadJSON(SCHEDULE_KEY,null)||DEFAULT_SCHEDULE.map(g=>({...g}));
+  let scheduleDraft=[];
+  function saveSchedule(list){
+    seasonSchedule=list;
+    localStorage.setItem(SCHEDULE_KEY,JSON.stringify(seasonSchedule));
+  }
+  /** Date + time + opponent + side, formatted for the dropdown — computed, not stored, so editing a game can never leave a stale label behind. */
+  function formatScheduleLabel(g){
+    const d=new Date((g.date||"")+"T00:00:00");
+    const dateStr=isNaN(d) ? (g.date||"(no date)") : d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+    let timeStr="";
+    if(g.time){
+      const [h,m]=g.time.split(":").map(Number);
+      if(Number.isFinite(h)&&Number.isFinite(m)){
+        const ap=h>=12?"PM":"AM", h12=((h+11)%12)+1;
+        timeStr=", "+h12+":"+String(m).padStart(2,"0")+" "+ap;
+      }
+    }
+    const side=g.homeAway==="away"?"at":"vs";
+    return dateStr+timeStr+" "+side+" "+(g.opponent||"TBD")+" ("+(g.homeAway==="away"?"Away":"Home")+")";
+  }
   const slots=["GK","LB","RB","M","F"];
   const posNames={GK:"Goalie",LB:"Left Back",RB:"Right Back",M:"Support / Mid",F:"Forward"};
   const KEY="team71-v5-current", HIST="team71-v5-history";
@@ -1375,8 +1420,8 @@
     const scheduleSel=$("scheduleGame");
     if(scheduleSel){
       scheduleSel.innerHTML='<option value="">Choose a scheduled game…</option>';
-      SEASON_SCHEDULE.forEach(g=>{
-        const o=document.createElement("option");o.value=g.date;o.textContent=g.label;
+      seasonSchedule.forEach(g=>{
+        const o=document.createElement("option");o.value=g.date;o.textContent=formatScheduleLabel(g);
         if(state.opponent===g.opponent && state.homeAway===g.homeAway && state.snackPlayer===g.snack) o.selected=true;
         scheduleSel.append(o);
       });
@@ -1427,7 +1472,7 @@
 
   function applyScheduleGame(){
     if(!guardEdit())return;
-    const g=SEASON_SCHEDULE.find(x=>x.date===$("scheduleGame").value);
+    const g=seasonSchedule.find(x=>x.date===$("scheduleGame").value);
     if(!g)return;
     pushUndo("apply scheduled game");
     state.opponent=g.opponent;
@@ -1435,7 +1480,81 @@
     state.snackPlayer=g.snack;
     actionSave(["setup"]);
     renderAll();
-    setStatus("Loaded "+g.label+" — opponent, jersey, and snack are set.");
+    setStatus("Loaded "+formatScheduleLabel(g)+" — opponent, jersey, and snack are set.");
+  }
+
+  /**
+   * Edited as a draft and only committed to seasonSchedule (and
+   * localStorage) on Save, so opening the editor, poking around, and
+   * closing without saving never touches the real list — same reasoning
+   * as goalieDraft/lineupDraft on Pregame.
+   */
+  function openScheduleEditor(){
+    scheduleDraft=seasonSchedule.map(g=>({...g}));
+    renderScheduleEditor();
+    $("scheduleEditModal").classList.add("show");
+  }
+
+  function renderScheduleEditor(){
+    const box=$("scheduleRows");
+    if(!box)return;
+    box.innerHTML="";
+    scheduleDraft.forEach((g,i)=>{
+      const row=document.createElement("div");
+      row.className="card";
+      row.style.marginBottom="8px";
+      row.innerHTML=
+        "<div class='grid2'>"+
+          "<label>Date<input type='date' data-i='"+i+"' data-f='date' value='"+escapeHtml(g.date||"")+"'></label>"+
+          "<label>Time<input type='time' data-i='"+i+"' data-f='time' value='"+escapeHtml(g.time||"")+"'></label>"+
+        "</div>"+
+        "<div class='grid2' style='margin-top:8px'>"+
+          "<label>Opponent<input data-i='"+i+"' data-f='opponent' value='"+escapeHtml(g.opponent||"")+"'></label>"+
+          "<label>Jersey / Side<select data-i='"+i+"' data-f='homeAway'>"+
+            "<option value='home'"+(g.homeAway!=="away"?" selected":"")+">Home — Red</option>"+
+            "<option value='away'"+(g.homeAway==="away"?" selected":"")+">Away — Blue</option>"+
+          "</select></label>"+
+        "</div>"+
+        "<label style='display:block;margin-top:8px'>Snack <span class='muted small'>(plays goalie in Q4)</span>"+
+          "<select data-i='"+i+"' data-f='snack'>"+
+            "<option value=''>No snack assignment</option>"+
+            roster.map(p=>"<option value='"+escapeHtml(p)+"'"+(g.snack===p?" selected":"")+">"+escapeHtml(p)+"</option>").join("")+
+          "</select>"+
+        "</label>"+
+        "<div class='controls' style='margin-top:8px'><button class='danger' type='button' data-i='"+i+"' data-remove='1'>Remove This Game</button></div>";
+      box.append(row);
+    });
+    box.querySelectorAll("input,select").forEach(el=>{
+      el.onchange=()=>{ scheduleDraft[Number(el.dataset.i)][el.dataset.f]=el.value };
+    });
+    box.querySelectorAll("[data-remove]").forEach(btn=>{
+      btn.onclick=()=>{ scheduleDraft.splice(Number(btn.dataset.i),1); renderScheduleEditor() };
+    });
+  }
+
+  function addScheduleRow(){
+    scheduleDraft.push({date:"",time:"",opponent:"",homeAway:"home",snack:""});
+    renderScheduleEditor();
+  }
+
+  function saveScheduleEdits(){
+    const clean=scheduleDraft.filter(g=>g.date).sort((a,b)=>a.date.localeCompare(b.date));
+    saveSchedule(clean);
+    $("scheduleEditModal").classList.remove("show");
+    renderSetup();
+    setStatus("Season schedule saved — "+clean.length+" game"+(clean.length===1?"":"s")+".");
+  }
+
+  function downloadScheduleFile(){
+    const blob=new Blob([JSON.stringify(seasonSchedule,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="team71-schedule.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
   function setSnackPlayer(){
@@ -2933,6 +3052,36 @@
   $("opponent").addEventListener("input",()=>{state.opponent=$("opponent").value;actionSave(["setup"])});$("homeAway").addEventListener("change",()=>{state.homeAway=$("homeAway").value;actionSave(["setup"])});
   $("snackPlayer").addEventListener("change",setSnackPlayer);
   $("scheduleGame").addEventListener("change",applyScheduleGame);
+  $("editScheduleBtn").onclick=openScheduleEditor;
+  $("addScheduleRowBtn").onclick=addScheduleRow;
+  $("saveScheduleBtn").onclick=saveScheduleEdits;
+  $("closeScheduleEditBtn").onclick=()=>$("scheduleEditModal").classList.remove("show");
+  $("closeScheduleEditXBtn").onclick=()=>$("scheduleEditModal").classList.remove("show");
+  $("downloadScheduleFileBtn").onclick=downloadScheduleFile;
+  $("loadScheduleFileBtn").onclick=()=>$("scheduleFileInput").click();
+  $("scheduleFileInput").addEventListener("change",e=>{
+    const f=e.target.files[0];
+    e.target.value="";
+    if(!f)return;
+    const r=new FileReader();
+    r.onload=()=>{
+      try{
+        const j=JSON.parse(r.result);
+        if(!Array.isArray(j))throw new Error("not an array");
+        scheduleDraft=j.map(g=>({
+          date:String(g.date||""), time:String(g.time||""),
+          opponent:String(g.opponent||""),
+          homeAway:g.homeAway==="away"?"away":"home",
+          snack:String(g.snack||"")
+        }));
+        renderScheduleEditor();
+        setStatus("Schedule file loaded — review below, then Save.");
+      }catch(err){
+        alert("That schedule file could not be read. It should be a JSON file with a list of games (the same shape as Download Current Schedule produces).");
+      }
+    };
+    r.readAsText(f);
+  });
   $("allAvailableBtn").onclick=()=>{roster.forEach(p=>{state.present[p]=true;state.availability[p]="available"});actionSave(["setup","lineup"]);renderAll()};
   $("buildPlanBtn").onclick=buildPlan;
   $("regenerateLineupBtn").onclick=regenerateLineup;

@@ -89,6 +89,153 @@ test("picking a scheduled game fills in opponent, jersey, and snack together", a
   app.close();
 });
 
+/* ===================================================== editing the schedule */
+
+test("the schedule editor opens with one row per game, pre-filled", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  assert.equal(app.$("scheduleEditModal").classList.contains("show"), true);
+  const rows = app.doc.querySelectorAll("#scheduleRows .card");
+  assert.equal(rows.length, 8, "the default schedule has 8 games");
+  const firstOpponent = rows[0].querySelector("[data-f='opponent']");
+  assert.equal(firstOpponent.value, "Team 72");
+  app.close();
+});
+
+test("editing a game and saving updates the real schedule, and the dropdown reflects it", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  const row = app.doc.querySelectorAll("#scheduleRows .card")[0];
+  const opponentInput = row.querySelector("[data-f='opponent']");
+  opponentInput.value = "Team 99";
+  opponentInput.dispatchEvent(new app.win.Event("change", { bubbles: true }));
+  await app.flush();
+
+  await app.click("saveScheduleBtn");
+  assert.equal(app.$("scheduleEditModal").classList.contains("show"), false, "closes after saving");
+
+  const saved = app.schedule();
+  assert.ok(saved.some((g) => g.date === "2026-09-12" && g.opponent === "Team 99"));
+
+  await app.setScheduleGame("2026-09-12");
+  assert.equal(app.state().opponent, "Team 99", "the edited opponent is what gets applied from the dropdown now");
+  app.close();
+});
+
+test("closing the editor without saving discards the edit", async () => {
+  const app = await openApp();
+  const before = app.schedule();
+  await app.click("editScheduleBtn");
+  const row = app.doc.querySelectorAll("#scheduleRows .card")[0];
+  const opponentInput = row.querySelector("[data-f='opponent']");
+  opponentInput.value = "Team 99";
+  opponentInput.dispatchEvent(new app.win.Event("change", { bubbles: true }));
+  await app.flush();
+
+  await app.click("closeScheduleEditBtn");
+  assert.deepEqual(app.schedule(), before, "nothing changed — the edit was only ever in the draft");
+  app.close();
+});
+
+test("adding a game and saving grows the schedule", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  await app.click("addScheduleRowBtn");
+
+  const rows = app.doc.querySelectorAll("#scheduleRows .card");
+  const newRow = rows[rows.length - 1];
+  const setField = (f, v) => {
+    const el = newRow.querySelector("[data-f='" + f + "']");
+    el.value = v;
+    el.dispatchEvent(new app.win.Event("change", { bubbles: true }));
+  };
+  setField("date", "2026-12-05");
+  setField("time", "10:00");
+  setField("opponent", "Team 80");
+  setField("homeAway", "home");
+  await app.flush();
+
+  await app.click("saveScheduleBtn");
+  const saved = app.schedule();
+  assert.equal(saved.length, 9);
+  assert.ok(saved.some((g) => g.date === "2026-12-05" && g.opponent === "Team 80"));
+  app.close();
+});
+
+test("removing a game and saving shrinks the schedule", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  const removeBtn = app.doc.querySelector("#scheduleRows .card [data-remove]");
+  removeBtn.click();
+  await app.flush();
+
+  await app.click("saveScheduleBtn");
+  const saved = app.schedule();
+  assert.equal(saved.length, 7);
+  assert.ok(!saved.some((g) => g.date === "2026-09-12"), "the first game is gone");
+  app.close();
+});
+
+test("a row with no date is dropped on save, instead of being kept as a blank game", async () => {
+  const app = await openApp();
+  await app.click("editScheduleBtn");
+  await app.click("addScheduleRowBtn"); // never filled in
+  await app.click("saveScheduleBtn");
+  assert.equal(app.schedule().length, 8, "the blank row never made it in");
+  app.close();
+});
+
+test("Download Current Schedule produces a JSON file of the current schedule", async () => {
+  const app = await openApp();
+  let downloadedName = null, downloadedBlobParts = null;
+  const originalClick = app.win.HTMLAnchorElement.prototype.click;
+  app.win.HTMLAnchorElement.prototype.click = function () { downloadedName = this.download; };
+  const originalCreateObjectURL = app.win.URL.createObjectURL;
+  app.win.URL.createObjectURL = (blob) => { downloadedBlobParts = blob; return originalCreateObjectURL(blob); };
+
+  await app.click("downloadScheduleFileBtn");
+
+  assert.match(downloadedName, /schedule.*\.json$/);
+  assert.ok(downloadedBlobParts, "a file was actually built");
+  app.win.HTMLAnchorElement.prototype.click = originalClick;
+  app.close();
+});
+
+test("REGRESSION: loading a schedule file replaces the draft for review, not the live schedule directly", async () => {
+  const app = await openApp();
+  const before = app.schedule();
+
+  await app.click("editScheduleBtn");
+  const fileSchedule = [
+    { date: "2027-01-10", time: "11:00", opponent: "Team 50", homeAway: "home", snack: "Shalom Amaya" }
+  ];
+  await app.uploadFile("scheduleFileInput", "schedule.json", JSON.stringify(fileSchedule));
+
+  // Not committed yet — still just the draft on screen.
+  assert.deepEqual(app.schedule(), before, "the live schedule is untouched until Save");
+  const rows = app.doc.querySelectorAll("#scheduleRows .card");
+  assert.equal(rows.length, 1, "the editor now shows exactly what the file contained");
+  assert.equal(rows[0].querySelector("[data-f='opponent']").value, "Team 50");
+
+  await app.click("saveScheduleBtn");
+  const saved = app.schedule();
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].opponent, "Team 50");
+  app.close();
+});
+
+test("a schedule saved from a previous visit is still there the next time the app opens", async () => {
+  const seedSchedule = [
+    { date: "2027-02-01", time: "09:00", opponent: "Team 61", homeAway: "away", snack: "" }
+  ];
+  const app = await openApp({ seedSchedule });
+  await app.click("editScheduleBtn");
+  const rows = app.doc.querySelectorAll("#scheduleRows .card");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].querySelector("[data-f='opponent']").value, "Team 61");
+  app.close();
+});
+
 test("the Q4 goalie dropdown visually defaults to the snack player before Build Game Plan", async () => {
   const app = await openApp();
   await app.setSnack("Aria Stagnitta");
@@ -1879,8 +2026,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v39 so the deployed build is identifiable", async () => {
+test("the version banner says v40 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v39 SWAP/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v40 SCHEDULED/);
   app.close();
 });

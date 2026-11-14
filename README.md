@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v39 SWAP
+# Team 71 Game Manager — v40 SCHEDULED
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,9 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v39:** see [`V39_SWAP.md`](V39_SWAP.md)
-- **Earlier changes:** [`V38_FRESHSTART.md`](V38_FRESHSTART.md),
+- **What changed in v40:** see [`V40_SCHEDULED.md`](V40_SCHEDULED.md)
+- **Earlier changes:** [`V39_SWAP.md`](V39_SWAP.md),
+  [`V38_FRESHSTART.md`](V38_FRESHSTART.md),
   [`V37_PRINTDARK.md`](V37_PRINTDARK.md),
   [`V36_FIELDBAR.md`](V36_FIELDBAR.md),
   [`V35_FIELDHUD.md`](V35_FIELDHUD.md),
@@ -27,10 +28,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v39 SWAP
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v40 SCHEDULED
 ```
 
-Worth a glance before every game. If it does not say `v39 SWAP`, the deploy
+Worth a glance before every game. If it does not say `v40 SCHEDULED`, the deploy
 did not land and you are running older code.
 
 ---
@@ -45,6 +46,16 @@ did not land and you are running older code.
    Q4 by default (the Q4 goalie dropdown shows this as soon as snack is set,
    not just after Build Game Plan runs). Everyone else is equally eligible
    for goalie; there's no per-player preference to set.
+   - **Edit Season Schedule** opens an editor for the whole list — date,
+     time, opponent, home/away, and snack for each game, with Add/Remove
+     per game. Changes are a draft until you tap Save, so opening it to
+     look around is always safe. **Download Current Schedule** exports it
+     as a file; **Load Schedule File** replaces the editor's contents with
+     one (also just a draft until Save) — the fastest way to get a whole
+     new season's schedule onto a phone, or to copy the same schedule onto
+     a second coach's phone by sharing that one file. The schedule lives
+     only on this phone, not in the shared game — the two coaches apply
+     it independently, same as a skill ranking.
 2. Set attendance for each girl. Marking someone Out here does the same thing
    as marking her Out during the game: she comes off the field, her minutes
    stop, any quarter where she was the planned goalie is reassigned right
@@ -179,7 +190,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                157 tests — see below
+test/                166 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -204,7 +215,7 @@ npm install
 npm test
 ```
 
-157 tests, about 20 seconds, no network or Cloudflare account required.
+166 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game
