@@ -1152,6 +1152,97 @@ test("reopening moments after a reload keeps the clock running", async () => {
   app.close();
 });
 
+/* ===================================================== auto-close stale games */
+
+test("REGRESSION: a game left over from more than a day ago is closed out and reset automatically", async () => {
+  const now = 1780000000000;
+  const staleTs = now - 2 * 24 * 60 * 60 * 1000;
+  const seedState = {
+    gameId: "g_" + staleTs.toString(36) + "_stale1", opponent: "Team 72", homeAway: "home",
+    present: {}, availability: {},
+    goaliePlan: ["Olivia Carpenter", "Serafina Sinagra", "Norah Dineen", "Luna Scrivano"],
+    lineup: { GK: "Olivia Carpenter", LB: "Shalom Amaya", RB: "Kennedy Kozlosky", M: "Juliette Maglio", F: "Aria Stagnitta" },
+    planBuilt: true, elapsed: 400, quarter: 1, running: false, ended: false,
+    play: {}, gk: {}, posPlay: {}, goals: {}, ourScore: 2, theirScore: 1, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 400, testSpeed: 1, timerOwnerId: "",
+    shareCode: "", syncVersion: 0
+  };
+  const app = await openApp({ now, seedState });
+  const s = app.state();
+  assert.notEqual(s.gameId, seedState.gameId, "a fresh game id was generated");
+  assert.equal(s.planBuilt, false, "fully reset, not just left sitting there as last week's game");
+  assert.equal(s.elapsed, 0);
+  const hist = app.history();
+  assert.ok(hist.some((g) => g.id === seedState.gameId && g.ourScore === 2 && g.theirScore === 1),
+    "the stale game's real progress reached season history, same as End Game would have saved it");
+  assert.match(app.text("status"), /more than a day ago/);
+  app.close();
+});
+
+test("a stale game with no real progress is reset silently, without adding a blank entry to history", async () => {
+  const now = 1780000000000;
+  const staleTs = now - 2 * 24 * 60 * 60 * 1000;
+  const seedState = {
+    gameId: "g_" + staleTs.toString(36) + "_stale2", opponent: "Team 72", homeAway: "home",
+    present: {}, availability: {},
+    goaliePlan: ["", "", "", ""], lineup: { GK: null, LB: null, RB: null, M: null, F: null },
+    planBuilt: false, elapsed: 0, quarter: 0, running: false, ended: false,
+    play: {}, gk: {}, posPlay: {}, goals: {}, ourScore: 0, theirScore: 0, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 0, testSpeed: 1, timerOwnerId: "",
+    shareCode: "", syncVersion: 0
+  };
+  const app = await openApp({ now, seedState });
+  const s = app.state();
+  assert.notEqual(s.gameId, seedState.gameId);
+  assert.equal(app.history().some((g) => g.id === seedState.gameId), false, "nothing worth saving, so nothing was added");
+  app.close();
+});
+
+test("a stale game already properly ended is reset without re-saving a duplicate history entry", async () => {
+  const now = 1780000000000;
+  const staleTs = now - 2 * 24 * 60 * 60 * 1000;
+  const oldId = "g_" + staleTs.toString(36) + "_stale3";
+  const seedState = {
+    gameId: oldId, opponent: "Team 72", homeAway: "home",
+    present: {}, availability: {},
+    goaliePlan: ["Olivia Carpenter", "", "", ""], lineup: { GK: "Olivia Carpenter", LB: null, RB: null, M: null, F: null },
+    planBuilt: true, elapsed: 2880, quarter: 3, running: false, ended: true,
+    play: {}, gk: {}, posPlay: {}, goals: {}, ourScore: 3, theirScore: 0, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 2880, testSpeed: 1, timerOwnerId: "",
+    shareCode: "", syncVersion: 0
+  };
+  const seedHistory = [{
+    id: oldId, date: new Date(now).toISOString(), opponent: "Team 72", homeAway: "home",
+    ourScore: 3, theirScore: 0, play: {}, posPlay: {}, gkQuarters: {}, goals: {}, goalLog: []
+  }];
+  const app = await openApp({ now, seedState, seedHistory });
+  const s = app.state();
+  assert.notEqual(s.gameId, oldId, "still gets a clean slate for the next game");
+  const matches = app.history().filter((g) => g.id === oldId);
+  assert.equal(matches.length, 1, "already saved once — must not be duplicated by the auto-close check");
+  app.close();
+});
+
+test("a game from earlier today is left exactly as it was — only a day-plus triggers the reset", async () => {
+  const now = 1780000000000;
+  const recentTs = now - 2 * 60 * 60 * 1000; // two hours ago
+  const seedState = {
+    gameId: "g_" + recentTs.toString(36) + "_recent", opponent: "Team 75", homeAway: "away",
+    present: {}, availability: {},
+    goaliePlan: ["Olivia Carpenter", "", "", ""], lineup: { GK: "Olivia Carpenter", LB: null, RB: null, M: null, F: null },
+    planBuilt: true, elapsed: 120, quarter: 0, running: false, ended: false,
+    play: {}, gk: {}, posPlay: {}, goals: {}, ourScore: 0, theirScore: 0, goalLog: [],
+    clockStartedAt: null, clockAnchorElapsed: 120, testSpeed: 1, timerOwnerId: "",
+    shareCode: "", syncVersion: 0
+  };
+  const app = await openApp({ now, seedState });
+  const s = app.state();
+  assert.equal(s.gameId, seedState.gameId, "untouched — not stale enough yet");
+  assert.equal(s.opponent, "Team 75");
+  assert.equal(s.elapsed, 120);
+  app.close();
+});
+
 /* ============================================================ two phones */
 
 test("two phones: the second coach discovers and joins the live game", async () => {
@@ -1705,8 +1796,8 @@ test("P1.4 REGRESSION: a rotation swap avoids putting a player back in the posit
   app.close();
 });
 
-test("the version banner says v37 so the deployed build is identifiable", async () => {
+test("the version banner says v38 so the deployed build is identifiable", async () => {
   const app = await openApp();
-  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v37 PRINTDARK/);
+  assert.match(app.doc.querySelector(".top .muted.small").textContent, /v38 FRESHSTART/);
   app.close();
 });

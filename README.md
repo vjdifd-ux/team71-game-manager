@@ -1,4 +1,4 @@
-# Team 71 Game Manager — v37 PRINTDARK
+# Team 71 Game Manager — v38 FRESHSTART
 
 East Islip GU7 • 5v5 • 4 × 12-minute quarters
 
@@ -8,8 +8,9 @@ can run the same game at the same time. Works offline after the first load.
 - **Live:** https://team71.vjdifd.workers.dev/
 - **Deploying:** see [`DEPLOY.md`](DEPLOY.md) — read the first section, it is the
   thing that goes wrong
-- **What changed in v37:** see [`V37_PRINTDARK.md`](V37_PRINTDARK.md)
-- **Earlier changes:** [`V36_FIELDBAR.md`](V36_FIELDBAR.md),
+- **What changed in v38:** see [`V38_FRESHSTART.md`](V38_FRESHSTART.md)
+- **Earlier changes:** [`V37_PRINTDARK.md`](V37_PRINTDARK.md),
+  [`V36_FIELDBAR.md`](V36_FIELDBAR.md),
   [`V35_FIELDHUD.md`](V35_FIELDHUD.md),
   [`V34_PRINTLAYOUT.md`](V34_PRINTLAYOUT.md),
   [`V33_PRINTFIX.md`](V33_PRINTFIX.md) (incomplete — see V34),
@@ -25,10 +26,10 @@ can run the same game at the same time. Works offline after the first load.
 Under the title on the home screen:
 
 ```
-East Islip GU7 • 5v5 • 4 × 12-minute quarters • v37 PRINTDARK
+East Islip GU7 • 5v5 • 4 × 12-minute quarters • v38 FRESHSTART
 ```
 
-Worth a glance before every game. If it does not say `v37 PRINTDARK`, the deploy
+Worth a glance before every game. If it does not say `v38 FRESHSTART`, the deploy
 did not land and you are running older code.
 
 ---
@@ -140,6 +141,11 @@ did not land and you are running older code.
   clock to the quarter boundary, applies the next quarter's lineup, and waits for
   you to press Start. This is the one button that does move the clock.
 - **End Game** saves the game to season history and closes the shared session.
+- **A game left open for more than a day closes itself out automatically**
+  the next time the app is opened — same as tapping End Game (so real
+  progress still reaches season history) followed by New Game. Nothing
+  about setting up this week's game ever depends on remembering to reset
+  last week's.
 - **Test Speed & Sound** lives in its own card at the bottom of the tab, out
   of the way of the controls you actually need mid-game. Test Speed cycles
   1× → 10× → 60×, changeable only while paused. At 60× a 12-minute quarter
@@ -169,7 +175,7 @@ public/index.html    the whole app — markup, styles, and logic in one file
 public/sw.js         service worker (offline shell; never caches /api/)
 public/manifest.json PWA manifest
 wrangler.json        Worker, assets and D1 configuration
-test/                147 tests — see below
+test/                151 tests — see below
 docs/history/        QA notes from v15 through v21
 ```
 
@@ -194,7 +200,7 @@ npm install
 npm test
 ```
 
-147 tests, about 20 seconds, no network or Cloudflare account required.
+151 tests, about 20 seconds, no network or Cloudflare account required.
 
 - `test/worker.test.mjs` — the real Worker code against a D1 stand-in built on
   `node:sqlite`: routing, domain merging, optimistic locking, the active-game

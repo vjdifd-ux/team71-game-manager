@@ -198,7 +198,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v37 PRINTDARK</div></div>
+    <div><h1>Team 71 Game Manager</h1><div class="muted small">East Islip GU7 • 5v5 • 4 × 12-minute quarters • v38 FRESHSTART</div></div>
     <div class="pill" id="installHint">Works offline after first load</div>
   </div>
 
@@ -471,6 +471,9 @@
   // are still well inside "instant" for a soccer sideline, and nothing polls
   // at all while the app is in the background.
   const POLL_STATE_MS=2000, POLL_AUDIT_MS=5000, POLL_ACTIVE_MS=10000;
+  // Games run about an hour; nothing legitimate is still "this game" a full
+  // day later. See autoCloseStaleGame() at boot.
+  const STALE_GAME_MS=24*60*60*1000;
 
   // A clock left running while the phone was closed should not silently credit
   // hours of playing time when the app reopens.
@@ -659,10 +662,13 @@
     return {type:"quarter",at:end,label:q===3?"Game end":"Quarter end / goalie change"};
   }
 
-  async function resetGame(){
-    if(!guardEdit()) return;
-    if(!confirm("Reset the current game to 0:00? Season history will be kept.")) return;
-
+  /**
+   * The actual wipe behind "New Game / Reset" - also reused by the
+   * auto-close-a-stale-game check at boot, so a game left over from last
+   * week gets exactly the same clean slate a manual Reset would give it,
+   * with nothing duplicated between the two paths.
+   */
+  async function hardResetToFresh(){
     const oldCode=state.shareCode;
 
     state.running=false;
@@ -690,9 +696,45 @@
     save();
     renderAll();
     await fetchActiveGame();
-    showTab("setup");
     setSyncStatus("","Local only");
+  }
+
+  async function resetGame(){
+    if(!guardEdit()) return;
+    if(!confirm("Reset the current game to 0:00? Season history will be kept.")) return;
+    await hardResetToFresh();
+    showTab("setup");
     setStatus("New game ready.");
+  }
+
+  /** gameId is "g_<base36 Date.now()>_<random>" — pull the timestamp back out. */
+  function gameStartedAt(gameId){
+    const m=/^g_([0-9a-z]+)_/.exec(gameId||"");
+    const t=m?parseInt(m[1],36):NaN;
+    return Number.isFinite(t)?t:0;
+  }
+
+  /**
+   * Nothing nudges a coach to start a fresh game for a new game day — state
+   * just persists in localStorage forever, so whatever was left over from
+   * last week (mid-game, paused, or simply never reset after End Game) is
+   * exactly what greets them next time, with no reminder that it's stale.
+   * Checked once at boot: a game this old gets closed out for real if it
+   * has progress worth keeping (closeOutGame — same as End Game would do,
+   * so the numbers reach season history even if nobody tapped the button),
+   * then wiped to a clean slate either way (hardResetToFresh — same as New
+   * Game). The coach never has to remember to do either one themselves.
+   */
+  async function autoCloseStaleGame(){
+    const startedAt=gameStartedAt(state.gameId);
+    if(!startedAt || Date.now()-startedAt<=STALE_GAME_MS) return;
+
+    const hasRealProgress=state.planBuilt || state.elapsed>0;
+    if(hasRealProgress && !state.ended){
+      await closeOutGame();
+    }
+    await hardResetToFresh();
+    setStatus("Last game was from more than a day ago — started fresh for today.");
   }
 
 
@@ -2684,11 +2726,13 @@
     setStatus("Quarter "+(state.quarter+1)+" lineup is on the field. Position players, then press Start.");
   }
 
-  async function endGame(){
-    if(!guardEdit())return;
-    if(state.ended)return;
-    if(!confirm("End this game and save it to season history?"))return;
-
+  /**
+   * The save-to-history-and-tear-down-the-shared-game half of "End Game" -
+   * also reused by the auto-close-a-stale-game check at boot, so real
+   * progress from a game nobody formally ended still reaches season
+   * history instead of silently vanishing once the next game resets it.
+   */
+  async function closeOutGame(){
     if(state.running && state.timerOwnerId===CLIENT_ID) advanceClockToNow();
     state.running=false;
     state.clockStartedAt=null;
@@ -2742,6 +2786,16 @@
     if(cloudPollHandle){clearInterval(cloudPollHandle);cloudPollHandle=null}
     if(auditPollHandle){clearInterval(auditPollHandle);auditPollHandle=null}
     save();
+
+    return cloudSaved;
+  }
+
+  async function endGame(){
+    if(!guardEdit())return;
+    if(state.ended)return;
+    if(!confirm("End this game and save it to season history?"))return;
+
+    const cloudSaved=await closeOutGame();
 
     setStatus(cloudSaved ? "Game saved to shared season history." : "Game saved locally; cloud history will sync when online.");
     activeGameCache=null;
@@ -2864,17 +2918,24 @@
 
   function renderAll(){renderSetup();renderGoaliePlanner();renderLineupPlanner();renderGame();renderGameGoalieStrip();renderHistory();renderShared();renderActiveGame()}
   load();
-  if(state.running && state.timerOwnerId===CLIENT_ID){
-    requestWakeLock();
-    if(!timerHandle)timerHandle=setInterval(tick,250);
-  }
-  renderAll();
-  fetchActiveGame();
-  loadCloudHistory();
-  startCloudPolling();
-  startAuditPolling();
-  startActivePolling();
-  setInterval(()=>{ if(state.running && state.timerOwnerId!==CLIENT_ID) renderGame(); updateSyncAge(); },250);
+  (async()=>{
+    // Must resolve before the first render and the running/wake-lock check
+    // below, or a stale game flashes on screen for a moment before being
+    // swept away — or worse, its (pre-reset) state.running momentarily
+    // starts a wake lock/timer for a game that's about to be wiped anyway.
+    await autoCloseStaleGame();
+    if(state.running && state.timerOwnerId===CLIENT_ID){
+      requestWakeLock();
+      if(!timerHandle)timerHandle=setInterval(tick,250);
+    }
+    renderAll();
+    fetchActiveGame();
+    loadCloudHistory();
+    startCloudPolling();
+    startAuditPolling();
+    startActivePolling();
+    setInterval(()=>{ if(state.running && state.timerOwnerId!==CLIENT_ID) renderGame(); updateSyncAge(); },250);
+  })();
 
   if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
 })();
